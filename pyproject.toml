@@ -1,29 +1,15 @@
 [build-system]
 requires = ["setuptools>=61.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "financial-database"
-version = "0.1.0"
+version = "0.2.0"
 description = "Financial market data platform"
 requires-python = ">=3.13"
-dependencies = []
-uv = { allow = "auto" }
-
-[tool.uv]
-compile-lockfile = true
-
-[tool.ruff]
-line-length = 88
-target-version = "py313"
-
-[tool.pyright]
-python-version = "3.13"
-venv = ".venv"
-
-[tool.pytest]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
+dependencies = [
+    "psycopg[binary]>=3.3",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -33,4 +19,18 @@ dev = [
 ]
 
 [project.scripts]
-financial-db = "financial_database.cli:main"
+financial-db = "financial_database.cli:cli"
+financial-database = "financial_database.cli:cli"
+
+[tool.uv]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.pyright]
+venv = ".venv"
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
