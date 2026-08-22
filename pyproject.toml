@@ -16,7 +16,6 @@ compile-lockfile = true
 [tool.ruff]
 line-length = 88
 target-version = "py313"
-select = ["E", "F", "I", "W", "S", "N", "TID", "PLG", "PLZ", "PERF", "BAN", "PLR", "C4", "CIQ"]
 
 [tool.pyright]
 python-version = "3.13"
@@ -25,10 +24,6 @@ venv = ".venv"
 [tool.pytest]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
-maxfail = 0
-ordering = "default"
-tb = "short"
-asyncio_mode = "auto"
 
 [project.optional-dependencies]
 dev = [
