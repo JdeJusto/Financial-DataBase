@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: financial_database
+      POSTGRES_USER: financial
+      POSTGRES_PASSWORD: test
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U financial"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://financial:test@postgres:5432/financial_database
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: ["uv", "run", "python", "-m", "financial_database.cli"]
+
+volumes:
+  pg_data:

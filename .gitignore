@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.tox/
+.env/
+*.egg-info/
+.dist/
+.coverage
+.hypothesis/
+site-build/
+/.hypothesis/
+
+# UV
+.venv/
+uv.lock
+
+# Docker
+.dockerinit
+images/
+
+# Environment
+.env*
+**.env*
+
+# Data
+data/raw/
+
+# GitHub
+/.github/workflows/*.yml
+
+# Pyright
+pyrightconfig.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Mac
+.DS_Store

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "financial-database"
+version = "0.1.0"
+description = "Financial market data platform"
+requires-python = ">=3.13"
+dependencies = []
+uv = { allow = "auto" }
+
+[tool.uv]
+compile-lockfile = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+select = ["E", "F", "I", "W", "S", "N", "TID", "PLG", "PLZ", "PERF", "BAN", "PLR", "C4", "CIQ"]
+
+[tool.pyright]
+python-version = "3.13"
+venv = ".venv"
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+maxfail = 0
+ordering = "default"
+tb = "short"
+asyncio_mode = "auto"
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pyright",
+    "pytest",
+]
+
+[project.scripts]
+financial-db = "financial_database.cli:main"
