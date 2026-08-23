@@ -56,4 +56,4 @@ class CompanyListingRepository:
                 (listing_id,)
             )
             row = cur.fetchone()
-            return row[0] if row else False
+            return row["is_active"] if row else False

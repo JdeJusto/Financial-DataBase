@@ -76,7 +76,7 @@ def _get_db_connection(database_url: str | None) -> psycopg.Connection:
         "DATABASE_URL",
         "postgresql://financial:test@localhost:5432/financial_database"
     )
-    return psycopg.connect(url)
+    return psycopg.connect(url, row_factory=psycopg.rows.dict_row)
 
 
 def _get_user_agent() -> str:
@@ -112,11 +112,11 @@ def seed_provider(database_url):
             )
             row = cur.fetchone()
             if row:
-                print(f"✅ Created SEC provider: {row[0]}")
+                print(f"✅ Created SEC provider: {row['id']}")
             else:
                 cur.execute("SELECT id FROM data_providers WHERE name = 'SEC EDGAR'")
                 row = cur.fetchone()
-                print(f"✅ SEC provider already exists: {row[0]}")
+                print(f"✅ SEC provider already exists: {row['id']}")
         conn.commit()
     finally:
         conn.close()
@@ -391,7 +391,7 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
                        SELECT id FROM data_providers WHERE name = 'SEC EDGAR'
                    ) ORDER BY c.legal_name"""
             )
-            ciks = [row[0] for row in cur.fetchall()]
+            ciks = [row["identifier_value"] for row in cur.fetchall()]
 
         if limit:
             ciks = ciks[:limit]

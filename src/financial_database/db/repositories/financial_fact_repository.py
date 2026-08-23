@@ -28,7 +28,7 @@ class FinancialFactRepository:
                    ON CONFLICT (company_id, concept, period_start, period_end, filing_id, source_id) DO NOTHING
                    RETURNING id, company_id, concept, value, unit, period_start, period_end,
                    fiscal_year, fiscal_period, provider_id, source_id, filing_id, form, filing_date, created_at""",
-                (company_id, concept, float(value) if value else None, unit,
+                (company_id, concept, float(value) if value is not None else None, unit,
                  period_start, period_end, fiscal_year, fiscal_period, provider_id,
                  source_id, filing_id, form, filing_date)
             )

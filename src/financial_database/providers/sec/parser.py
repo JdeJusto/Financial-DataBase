@@ -142,6 +142,14 @@ class SECParser:
             if not self._is_financial_form(filing.form):
                 continue
 
+            # Skip filings without period_end (required by database schema)
+            if filing.period_end is None:
+                logger.warning(
+                    "Skipping filing without period_end",
+                    extra={"form": filing.form, "accession": filing.accession_number, "filing_date": filing.filing_date},
+                )
+                continue
+
             parsed = ParsedFiling(
                 accession_number=normalize_accession_number(filing.accession_number),
                 form=filing.form,

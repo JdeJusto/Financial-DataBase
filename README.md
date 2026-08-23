@@ -1,7 +1,5 @@
 # Financial Database
 
-A PostgreSQL-based financial data warehouse designed to store and manage various types of financial data including company information, securities listings, prices, dividends, splits, financial facts (fundamentals), filings, raw documents, and import audit trails.
-
 ## Features
 
 - Normalized schema for financial data

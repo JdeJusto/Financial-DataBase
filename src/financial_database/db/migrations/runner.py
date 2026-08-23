@@ -33,7 +33,7 @@ def get_connection():
         "DATABASE_URL",
         "postgresql://financial:test@localhost:5432/financial_database"
     )
-    return psycopg.connect(database_url)
+    return psycopg.connect(database_url, row_factory=psycopg.rows.dict_row)
 
 
 def ensure_applied_table(conn):
@@ -53,7 +53,7 @@ def get_applied_migrations(conn) -> set:
     """Get set of already-applied migration names."""
     with conn.cursor() as cur:
         cur.execute(f"SELECT migration_name FROM {APPLIED_TABLE}")
-        return {row[0] for row in cur.fetchall()}
+        return {row["migration_name"] for row in cur.fetchall()}
 
 
 def get_migration_files() -> list:

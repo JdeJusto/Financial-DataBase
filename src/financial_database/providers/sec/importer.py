@@ -102,6 +102,7 @@ class SECImporter:
         self.conn = conn
         self.client = client
         self.parser = parser or SECParser()
+        self._raw_dir = client._raw_dir
 
         # Repositories
         self.companies = CompanyRepository(conn)
@@ -131,7 +132,7 @@ class SECImporter:
             )
             row = cur.fetchone()
             if row:
-                return uuid.UUID(str(row[0]))
+                return uuid.UUID(str(row["id"]))
 
             # Create provider
             cur.execute(
@@ -140,7 +141,7 @@ class SECImporter:
                    RETURNING id""",
                 (SEC_PROVIDER_NAME, SEC_PROVIDER_TYPE, "SEC EDGAR", "https://www.sec.gov", 10.0, True)
             )
-            provider_id = uuid.UUID(str(cur.fetchone()[0]))
+            provider_id = uuid.UUID(str(cur.fetchone()["id"]))
             self.conn.commit()
             logger.info("Created SEC provider", extra={"provider_id": str(provider_id)})
             return provider_id
@@ -170,6 +171,22 @@ class SECImporter:
 
         logger.info("Starting SEC company universe import")
         companies = await self.client.get_company_tickers()
+
+        # Create raw_document record for company tickers reference
+        raw_doc_path = self._raw_dir / "reference" / "company_tickers_exchange.json"
+        if raw_doc_path.exists():
+            import hashlib
+            import json
+            checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
+            self.raw_docs.create(
+                provider_id=str(provider_id),
+                source_identifier="reference:company_tickers_exchange",
+                storage_path=str(raw_doc_path),
+                checksum=checksum,
+                content_type="application/json",
+                metadata=json.dumps({}),
+            )
+            stats.raw_documents_created += 1
 
         for sec_company in companies:
             stats.companies_processed += 1
@@ -257,9 +274,10 @@ class SECImporter:
             row = cur.fetchone()
 
         if row:
-            company_id = str(row[0])
+            company_id = str(row["id"])
             # Update company if needed
-            self.companies.create(
+            self.companies.update(
+                company_id=company_id,
                 legal_name=parsed.legal_name,
                 country=parsed.country,
                 sector=parsed.sector,
@@ -314,6 +332,22 @@ class SECImporter:
             stats.errors.append({"cik": cik, "error": "Company not in local database"})
             return stats
 
+        # Create raw_document record for submissions
+        raw_doc_path = self._raw_dir / "submissions" / f"{cik.zfill(10)}.json"
+        if raw_doc_path.exists():
+            import hashlib
+            import json
+            checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
+            self.raw_docs.create(
+                provider_id=str(provider_id),
+                source_identifier=f"submissions:{cik.zfill(10)}",
+                storage_path=str(raw_doc_path),
+                checksum=checksum,
+                content_type="application/json",
+                metadata=json.dumps({}),
+            )
+            stats.raw_documents_created += 1
+
         # Parse and import filings
         parsed_filings = self.parser.parse_filings(submissions)
 
@@ -346,7 +380,7 @@ class SECImporter:
                 (normalized,)
             )
             row = cur.fetchone()
-            return str(row[0]) if row else None
+            return str(row["id"]) if row else None
 
     def _import_filing(
         self,
@@ -372,7 +406,7 @@ class SECImporter:
             )
             row = cur.fetchone()
             if row:
-                raw_doc_id = str(row[0])
+                raw_doc_id = str(row["id"])
 
         result = self.filings.create(
             company_id=company_id,
@@ -425,6 +459,22 @@ class SECImporter:
             stats.errors.append({"cik": cik, "error": "Company not in local database"})
             return stats
 
+        # Create raw_document record for companyfacts
+        raw_doc_path = self._raw_dir / "companyfacts" / f"{cik.zfill(10)}.json"
+        if raw_doc_path.exists():
+            import hashlib
+            import json
+            checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
+            self.raw_docs.create(
+                provider_id=str(provider_id),
+                source_identifier=f"companyfacts:{cik.zfill(10)}",
+                storage_path=str(raw_doc_path),
+                checksum=checksum,
+                content_type="application/json",
+                metadata=json.dumps({}),
+            )
+            stats.raw_documents_created += 1
+
         # Build filing_id map for this company
         filing_id_map = self._build_filing_id_map(company_id, provider_id)
 
@@ -466,7 +516,7 @@ class SECImporter:
                 (company_id, str(provider_id))
             )
             for row in cur.fetchall():
-                mapping[row[0]] = str(row[1])
+                mapping[row["accession_number"]] = str(row["id"])
         return mapping
 
     def _import_financial_fact(

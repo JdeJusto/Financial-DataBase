@@ -156,7 +156,12 @@ def normalize_exchange(sec_exchange: str | None) -> ExchangeMapping | None:
     """
     if not sec_exchange:
         return None
-    return SEC_EXCHANGE_MAP.get(sec_exchange.strip())
+    # Case-insensitive lookup
+    sec_exchange_clean = sec_exchange.strip()
+    for key, mapping in SEC_EXCHANGE_MAP.items():
+        if key.lower() == sec_exchange_clean.lower():
+            return mapping
+    return None
 
 
 def get_exchange_mappings() -> list[ExchangeMapping]:

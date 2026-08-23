@@ -25,7 +25,8 @@ from financial_database.providers.sec.models import (
 logger = logging.getLogger(__name__)
 
 SEC_BASE_URL = "https://www.sec.gov"
-SEC_SUBMISSIONS_URL = f"{SEC_BASE_URL}/api/xbrl/companyfacts/"
+SEC_DATA_BASE_URL = "https://data.sec.gov"
+SEC_SUBMISSIONS_URL = f"{SEC_DATA_BASE_URL}/api/xbrl/companyfacts/"
 SEC_COMPANY_TICKERS_URL = f"{SEC_BASE_URL}/files/company_tickers_exchange.json"
 SEC_SUBMISSIONS_PATH = "/submissions/CIK{}.json"
 SEC_COMPANYFACTS_PATH = "/api/xbrl/companyfacts/CIK{}.json"
@@ -255,7 +256,7 @@ class SECClient:
     async def get_submissions(self, cik: str) -> SECSubmissions:
         """Fetch submissions for a CIK."""
         normalized_cik = cik.zfill(10)
-        url = urljoin(SEC_BASE_URL, SEC_SUBMISSIONS_PATH.format(normalized_cik))
+        url = urljoin(SEC_DATA_BASE_URL, SEC_SUBMISSIONS_PATH.format(normalized_cik))
         logger.info("Fetching SEC submissions", extra={"cik": normalized_cik})
 
         data = await self._request(
@@ -298,7 +299,7 @@ class SECClient:
     async def get_company_facts(self, cik: str) -> SECCompanyFacts:
         """Fetch CompanyFacts XBRL data for a CIK."""
         normalized_cik = cik.zfill(10)
-        url = f"{SEC_BASE_URL}/api/xbrl/companyfacts/CIK{normalized_cik}.json"
+        url = f"{SEC_DATA_BASE_URL}/api/xbrl/companyfacts/CIK{normalized_cik}.json"
         logger.info("Fetching SEC CompanyFacts", extra={"cik": normalized_cik})
 
         data = await self._request(
