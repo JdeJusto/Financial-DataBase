@@ -3,7 +3,6 @@
 Handles exchanges where companies list.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class ExchangeRepository:

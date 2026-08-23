@@ -3,7 +3,6 @@
 Connects company + exchange + ticker with historical validity.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class CompanyListingRepository:

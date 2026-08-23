@@ -1,11 +1,11 @@
 """Test fixtures for financial database tests."""
 
-import os
-import pytest
 import asyncio
-from typing import AsyncGenerator, Generator
-from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+import os
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 # Test database configuration - use environment or defaults

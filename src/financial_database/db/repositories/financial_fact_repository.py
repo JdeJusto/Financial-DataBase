@@ -4,7 +4,6 @@ The most important table - normalized financial facts
 with full provenance and restatement support.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class FinancialFactRepository:

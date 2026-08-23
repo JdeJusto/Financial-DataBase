@@ -1,0 +1,9 @@
+{
+  "data": [
+    ["0000320193", "Apple Inc.", "AAPL", "NASDAQ", "3571", "Electronic Computers", "Apple Inc."],
+    ["0000789019", "Microsoft Corporation", "MSFT", "NASDAQ", "7372", "Prepackaged Software", "Microsoft Corporation"],
+    ["0001018724", "Amazon.com Inc.", "AMZN", "NASDAQ", "5961", "Catalog & Mail-Order Houses", "Amazon.com Inc."],
+    ["0001318605", "Tesla Inc.", "TSLA", "NASDAQ", "3711", "Motor Vehicles & Passenger Car Bodies", "Tesla Inc."],
+    ["0000051143", "Berkshire Hathaway Inc.", "BRK.A", "NYSE", "6331", "Insurance", "Berkshire Hathaway Inc."]
+  ]
+}

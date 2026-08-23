@@ -1,6 +1,5 @@
 """Unit tests for company_identifiers table functionality."""
 
-import pytest
 from sqlalchemy import text
 
 

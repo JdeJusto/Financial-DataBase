@@ -4,7 +4,6 @@ Handles historical prices per listing per provider.
 Uses NUMERIC type for precision, not FLOAT.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class PriceRepository:

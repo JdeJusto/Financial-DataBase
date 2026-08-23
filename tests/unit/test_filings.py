@@ -1,6 +1,5 @@
 """Unit tests for filings table functionality."""
 
-import pytest
 from sqlalchemy import text
 
 

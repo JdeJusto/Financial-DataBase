@@ -1,6 +1,5 @@
 """Unit tests for import_runs table functionality."""
 
-import pytest
 from sqlalchemy import text
 
 

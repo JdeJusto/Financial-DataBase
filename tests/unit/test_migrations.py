@@ -1,7 +1,5 @@
 """Unit tests for migration runner."""
 
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,11 +13,11 @@ class TestMigrationDiscovery:
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
         assert migrations_dir.exists()
 
-    def test_has_14_migrations(self):
-        """Test that we have exactly 14 migrations."""
+    def test_has_15_migrations(self):
+        """Test that we have exactly 15 migrations (including SEC provider seed)."""
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
         sql_files = list(migrations_dir.glob("*.sql"))
-        assert len(sql_files) == 14
+        assert len(sql_files) == 15
 
     def test_migrations_are_numbered(self):
         """Test that all migrations are properly numbered."""
@@ -33,7 +31,7 @@ class TestMigrationDiscovery:
     def test_migration_order(self):
         """Test that migrations are in correct order."""
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
-        sql_files = list(sorted(migrations_dir.glob("*.sql")))
+        sql_files = sorted(migrations_dir.glob("*.sql"))
         names = [f.stem for f in sql_files]
 
         expected = [
@@ -51,6 +49,7 @@ class TestMigrationDiscovery:
             "0012_raw_documents",
             "0013_import_runs",
             "0014_indexes",
+            "0015_sec_provider_seed",
         ]
         assert names == expected
 
@@ -62,14 +61,15 @@ class TestMigrationRunner:
         """Test that find_project_root works."""
         from financial_database.db.migrations.runner import find_project_root
         root = find_project_root()
-        assert root.name == "financial-database"
+        # The project root can be either "financial-database" or "Financial-DataBase" depending on case
+        assert root.name.lower() == "financial-database"
         assert (root / "pyproject.toml").exists()
 
     def test_get_migration_files(self):
         """Test getting migration files."""
         from financial_database.db.migrations.runner import get_migration_files
         files = get_migration_files()
-        assert len(files) == 14
+        assert len(files) == 15
         assert all(isinstance(f, tuple) and len(f) == 2 for f in files)
 
 

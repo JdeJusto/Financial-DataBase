@@ -4,7 +4,6 @@ Audit metadata for import pipelines.
 Tracks provenance of data loading operations.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class ImportRunRepository:

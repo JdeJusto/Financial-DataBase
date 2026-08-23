@@ -3,7 +3,6 @@
 Handles dividend payments per listing per provider.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class DividendRepository:

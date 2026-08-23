@@ -4,11 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "financial-database"
-version = "0.2.0"
+version = "0.3.0"
 description = "Financial market data platform"
 requires-python = ">=3.13"
 dependencies = [
     "psycopg[binary]>=3.3",
+    "aiohttp>=3.9",
+    "click>=8.1",
 ]
 
 [project.optional-dependencies]
@@ -16,6 +18,8 @@ dev = [
     "ruff",
     "pyright",
     "pytest",
+    "pytest-asyncio",
+    "sqlalchemy>=2.0",
 ]
 
 [project.scripts]

@@ -1,6 +1,5 @@
 """Unit tests for raw_documents table functionality."""
 
-import pytest
 from sqlalchemy import text
 
 

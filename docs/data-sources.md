@@ -59,6 +59,66 @@ When multiple providers supply conflicting data for the same entity (e.g., diffe
 2. **Timestamp Preference**: For same-priority providers, more recent data may be preferred
 3. **Source Tracking**: All conflicting values are preserved in the database with full provenance, allowing applications to implement custom conflict resolution logic
 
+### SEC EDGAR Provider Details
+
+The SEC EDGAR provider is a first-class provider implementation with a complete ingestion pipeline.
+
+#### SEC Provider Registration
+
+```sql
+INSERT INTO data_providers (name, type, display_name, base_url, rate_limit_per_second, is_active)
+VALUES ('SEC EDGAR', 'sec', 'SEC EDGAR', 'https://www.sec.gov', 10.0, TRUE)
+ON CONFLICT (name) DO NOTHING;
+```
+
+The migration `0015_sec_provider_seed.sql` seeds this provider and common SEC exchanges.
+
+#### SEC Data Sources
+
+| Endpoint | Data | Database Tables |
+|----------|------|-----------------|
+| `/files/company_tickers_exchange.json` | Company universe (CIK, name, ticker, exchange) | `companies`, `company_identifiers`, `company_listings`, `exchanges` |
+| `/submissions/CIK##########.json` | Filing metadata (accession, form, dates, periods) | `filings`, `raw_documents` |
+| `/api/xbrl/companyfacts/CIK##########.json` | XBRL financial facts (concepts, values, periods) | `financial_facts`, `raw_documents` |
+
+#### SEC Access Requirements
+
+- **User-Agent**: Required by SEC. Must be descriptive with contact info.
+  - Set via `SEC_USER_AGENT` environment variable
+  - Format: `"ApplicationName/Version ContactEmail"`
+  - Example: `"financial-database/0.1 contact@example.com"`
+- **Rate Limits**: SEC enforces limits. Client implements conservative 10 req/s default.
+- **HTTPS Only**: All requests use HTTPS.
+
+#### SEC Data Normalization
+
+| SEC Field | Normalization | Database Storage |
+|-----------|---------------|------------------|
+| CIK | Zero-padded to 10 digits | `company_identifiers.identifier_value` (type=CIK) |
+| Accession Number | Dashes removed | `filings.accession_number`, `financial_facts.source_id` |
+| Exchange | Mapped to internal code + MIC | `exchanges.code`, `exchanges.mic` |
+| Units | Preserved exactly | `financial_facts.unit` |
+| Namespace + Concept | Preserved as-is | `financial_facts.concept` (namespace in JSONB metadata) |
+| Instant/Duration | `period_start` NULL for instant | `financial_facts.period_start` |
+| Frame | Preserved if available | `financial_facts` metadata JSONB |
+| Fiscal Period | Preserved (FY, Q1-Q4, H1, H2) | `financial_facts.fiscal_period` |
+
+#### Restatement Handling
+
+The same economic period may appear in multiple filings (original, amended, restated). The database allows coexistence via:
+
+- Unique constraint on `(company_id, concept, period_start, period_end, filing_id, source_id)`
+- `filing_id` links to specific filing (original vs amended)
+- `source_id` includes accession + concept + period for uniqueness
+- `is_amended` flag on filings tracks amendment chain
+
+#### Incremental Ingestion
+
+- Raw documents tracked by `(provider_id, source_identifier)` with SHA-256 checksum
+- Content changes preserve previous version with timestamp
+- Import runs record processed/inserted/updated/skipped counts
+- Re-running pipeline only processes new/changed data
+
 ### Typical Provider Configurations
 
 #### Market Data Providers
@@ -86,8 +146,8 @@ VALUES
 ```sql
 INSERT INTO data_providers (name, type, priority, active)
 VALUES 
-('SEC', 'sec', 100, true),
-('EDGAR', 'sec', 100, true);  -- Note: Could be same as SEC or subset
+('SEC EDGAR', 'sec', 100, true),
+('SEC', 'sec', 100, true);  -- Legacy alias if needed
 ```
 
 #### Exchange Providers
@@ -162,6 +222,28 @@ JOIN data_providers dp ON f.provider_id = dp.id
 LEFT JOIN raw_documents rd ON f.raw_document_id = rd.id
 WHERE f.company_id = ? AND f.form = '10-K'
 ORDER BY f.filing_date DESC LIMIT 1;
+```
+
+#### Get SEC financial facts with filing provenance
+```sql
+SELECT 
+    ff.concept,
+    ff.value,
+    ff.unit,
+    ff.period_start,
+    ff.period_end,
+    ff.fiscal_year,
+    ff.fiscal_period,
+    f.form,
+    f.accession_number,
+    f.filing_date,
+    rd.storage_path as raw_file
+FROM financial_facts ff
+JOIN filings f ON ff.filing_id = f.id
+JOIN data_providers dp ON ff.provider_id = dp.id
+LEFT JOIN raw_documents rd ON f.raw_document_id = rd.id
+WHERE ff.company_id = ? AND dp.name = 'SEC EDGAR'
+ORDER BY ff.fiscal_year DESC, ff.period_end DESC;
 ```
 
 ### Extending the Provider System

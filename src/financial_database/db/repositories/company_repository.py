@@ -3,7 +3,6 @@
 Handles all database operations for the companies table.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class CompanyRepository:

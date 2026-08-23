@@ -3,7 +3,6 @@
 Handles SEC and other provider filings.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class FilingRepository:

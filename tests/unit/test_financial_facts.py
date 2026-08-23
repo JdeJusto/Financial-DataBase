@@ -1,6 +1,5 @@
 """Unit tests for financial_facts table functionality."""
 
-import pytest
 from sqlalchemy import text
 
 
@@ -279,4 +278,4 @@ def test_financial_facts_instant_vs_duration(db_session):
         assert False, "Should have failed check constraint"
     except Exception:
         db_session.rollback()  # Expected to fail
-        pass  # Constraint worked correctly
+        # Constraint worked correctly

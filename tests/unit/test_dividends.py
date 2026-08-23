@@ -1,6 +1,5 @@
 """Unit tests for dividends table functionality."""
 
-import pytest
 from sqlalchemy import text
 
 

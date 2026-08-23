@@ -3,7 +3,6 @@
 Metadata references to preserved raw data files.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class RawDocumentRepository:

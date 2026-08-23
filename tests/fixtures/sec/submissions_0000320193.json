@@ -1,0 +1,48 @@
+{
+  "cik": "0000320193",
+  "name": "Apple Inc.",
+  "filings": {
+    "recent": {
+      "accessionNumber": [
+        "0000320193-23-000106",
+        "0000320193-23-000010",
+        "0000320193-22-000108"
+      ],
+      "filingDate": [
+        "2023-11-03",
+        "2023-08-03",
+        "2022-10-27"
+      ],
+      "reportDate": [
+        "2023-09-30",
+        "2023-06-24",
+        "2022-09-24"
+      ],
+      "form": [
+        "10-K",
+        "10-Q",
+        "10-K"
+      ],
+      "primaryDocument": [
+        "aapl-20230930.htm",
+        "aapl-20230624.htm",
+        "aapl-20220924.htm"
+      ],
+      "primaryDocDescription": [
+        "10-K Annual Report",
+        "10-Q Quarterly Report",
+        "10-K Annual Report"
+      ],
+      "fy": [
+        2023,
+        2023,
+        2022
+      ],
+      "fp": [
+        "FY",
+        "Q3",
+        "FY"
+      ]
+    }
+  }
+}

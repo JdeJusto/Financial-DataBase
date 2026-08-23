@@ -1,0 +1,123 @@
+{
+  "cik": "0000320193",
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "Assets": {
+        "label": "Assets",
+        "description": "Sum of the carrying amounts as of the balance sheet date of all assets that are recognized.",
+        "units": {
+          "USD": [
+            {
+              "start": "2022-09-25",
+              "end": "2023-09-30",
+              "val": 352755000000,
+              "accn": "0000320193-23-000106",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "frame": "CY2023"
+            },
+            {
+              "start": "2021-09-26",
+              "end": "2022-09-24",
+              "val": 352755000000,
+              "accn": "0000320193-22-000108",
+              "fy": 2022,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2022-10-27",
+              "frame": "CY2022"
+            }
+          ]
+        }
+      },
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {
+        "label": "Revenue from Contract with Customer, Excluding Assessed Tax",
+        "description": "Revenue from contract with customer, excluding assessed tax.",
+        "units": {
+          "USD": [
+            {
+              "start": "2022-10-01",
+              "end": "2023-09-30",
+              "val": 383285000000,
+              "accn": "0000320193-23-000106",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "frame": "CY2023"
+            },
+            {
+              "start": "2022-07-01",
+              "end": "2022-09-24",
+              "val": 90146000000,
+              "accn": "0000320193-23-000010",
+              "fy": 2023,
+              "fp": "Q4",
+              "form": "10-Q",
+              "filed": "2023-08-03",
+              "frame": "CY2023Q4"
+            }
+          ]
+        }
+      },
+      "NetIncomeLoss": {
+        "label": "Net Income (Loss)",
+        "description": "The portion of profit or loss for the period, net of income taxes.",
+        "units": {
+          "USD": [
+            {
+              "start": "2022-10-01",
+              "end": "2023-09-30",
+              "val": 96995000000,
+              "accn": "0000320193-23-000106",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "frame": "CY2023"
+            }
+          ]
+        }
+      },
+      "CashAndCashEquivalentsAtCarryingValue": {
+        "label": "Cash and Cash Equivalents, at Carrying Value",
+        "description": "Amount of currency on hand as well as demand deposits with banks or financial institutions.",
+        "units": {
+          "USD": [
+            {
+              "end": "2023-09-30",
+              "val": 29965000000,
+              "accn": "0000320193-23-000106",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "frame": "CY2023"
+            }
+          ]
+        }
+      }
+    },
+    "dei": {
+      "EntityRegistrantName": {
+        "label": "Entity Registrant Name",
+        "units": {
+          "pure": [
+            {
+              "end": "2023-09-30",
+              "val": "Apple Inc.",
+              "accn": "0000320193-23-000106",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

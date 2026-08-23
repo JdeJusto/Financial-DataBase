@@ -3,7 +3,6 @@
 Handles ticker, CIK, ISIN, LEI and provider-specific identifiers.
 """
 
-from financial_database.db.connection import get_connection
 
 
 class CompanyIdentifierRepository:
