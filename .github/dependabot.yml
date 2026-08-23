@@ -6,14 +6,12 @@ updates:
       interval: "weekly"
       day: "monday"
     allow:
-      - dependency-type: "action"
+      - dependency-type: "direct"
     ignore:
-      - dependency-type: "action"
-        update-type: "version"
-        update-value: "!"
-        match-patterns:
-          - "actions/checkout@v*"
-          - "actions/setup-node@v*"
+      - dependency-name: "actions/checkout"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "actions/setup-node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
@@ -21,7 +19,6 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore"
-      prefix-scopes: ["dependencies"]
   - package-ecosystem: "pip"
     directory: "/"
     schedule:

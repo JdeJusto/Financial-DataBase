@@ -1,6 +1,7 @@
 """Unit tests for SEC importer (using mocked client and database)."""
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,6 +20,38 @@ from financial_database.providers.sec.models import (
 VALID_UUID = "12345678-1234-5678-1234-567812345678"
 VALID_UUID_2 = "87654321-4321-8765-4321-876543214321"
 VALID_UUID_3 = "11111111-2222-3333-4444-555555555555"
+
+
+@pytest.fixture
+def test_raw_dir(tmp_path):
+    """Create a temporary raw data directory with test fixtures."""
+    raw_dir = tmp_path / "raw"
+    sec_dir = raw_dir / "sec"
+    sec_dir.mkdir(parents=True)
+
+    # Copy fixture files to the expected locations
+    fixtures_dir = Path(__file__).parent.parent / "fixtures" / "sec"
+
+    # Copy company tickers reference
+    (sec_dir / "company_tickers_exchange.json").write_bytes(
+        (fixtures_dir / "company_tickers_exchange.json").read_bytes()
+    )
+
+    # Copy companyfacts fixture
+    companyfacts_dir = sec_dir / "companyfacts"
+    companyfacts_dir.mkdir(parents=True, exist_ok=True)
+    (companyfacts_dir / "0000320193.json").write_bytes(
+        (fixtures_dir / "companyfacts_0000320193.json").read_bytes()
+    )
+
+    # Copy submissions fixture
+    submissions_dir = sec_dir / "submissions"
+    submissions_dir.mkdir(parents=True, exist_ok=True)
+    (submissions_dir / "0000320193.json").write_bytes(
+        (fixtures_dir / "submissions_0000320193.json").read_bytes()
+    )
+
+    return raw_dir
 
 
 class MockConnection:
@@ -88,18 +121,16 @@ def mock_conn():
 
 
 @pytest.fixture
-def mock_client():
-    client = AsyncMock()
-    client.get_company_tickers = AsyncMock(return_value=[])
-    client.get_submissions = AsyncMock()
-    client.get_company_facts = AsyncMock()
-    client.close = AsyncMock()
-    return client
+def test_client(test_raw_dir):
+    """Create a real SECClient with test raw directory."""
+    from financial_database.providers.sec import SECClient
+
+    return SECClient(user_agent="test-agent", raw_dir=test_raw_dir)
 
 
 @pytest.fixture
-def importer(mock_conn, mock_client):
-    return SECImporter(mock_conn, mock_client)
+def importer(mock_conn, test_client):
+    return SECImporter(mock_conn, test_client)
 
 
 class TestSECImporterProviderSeed:
@@ -138,9 +169,9 @@ class TestSECImporterCompanyUniverse:
 
     @pytest.mark.asyncio
     async def test_import_company_universe_empty(
-        self, importer, mock_client, mock_conn
+        self, importer, test_client, mock_conn
     ):
-        mock_client.get_company_tickers = AsyncMock(return_value=[])
+        test_client.get_company_tickers = AsyncMock(return_value=[])
         mock_conn.set_cursor_results(
             [
                 [{"id": VALID_UUID}],  # _ensure_provider
@@ -155,7 +186,7 @@ class TestSECImporterCompanyUniverse:
 
     @pytest.mark.asyncio
     async def test_import_company_universe_single(
-        self, importer, mock_client, mock_conn
+        self, importer, test_client, mock_conn
     ):
         company = SECCompany(
             cik="0000320193",
@@ -163,7 +194,7 @@ class TestSECImporterCompanyUniverse:
             ticker="AAPL",
             exchange="NASDAQ",
         )
-        mock_client.get_company_tickers = AsyncMock(return_value=[company])
+        test_client.get_company_tickers = AsyncMock(return_value=[company])
 
         # Mock cursors for various queries
         mock_conn.set_cursor_results(
@@ -192,10 +223,10 @@ class TestSECImporterSubmissions:
     """Tests for submissions import."""
 
     @pytest.mark.asyncio
-    async def test_import_submissions_not_found(self, importer, mock_client, mock_conn):
+    async def test_import_submissions_not_found(self, importer, test_client, mock_conn):
         from financial_database.providers.sec.client import SECNotFoundError
 
-        mock_client.get_submissions = AsyncMock(
+        test_client.get_submissions = AsyncMock(
             side_effect=SECNotFoundError("Not found")
         )
         mock_conn.set_cursor_results(
@@ -212,14 +243,14 @@ class TestSECImporterSubmissions:
 
     @pytest.mark.asyncio
     async def test_import_submissions_company_not_in_db(
-        self, importer, mock_client, mock_conn
+        self, importer, test_client, mock_conn
     ):
         submissions = SECSubmissions(
             cik="0000320193",
             entity_name="Apple Inc.",
             filings=[],
         )
-        mock_client.get_submissions = AsyncMock(return_value=submissions)
+        test_client.get_submissions = AsyncMock(return_value=submissions)
 
         # Mock _get_company_id_by_cik to return None
         mock_conn.set_cursor_results(
@@ -237,7 +268,7 @@ class TestSECImporterSubmissions:
 
     @pytest.mark.asyncio
     async def test_import_submissions_filters_non_financial(
-        self, importer, mock_client, mock_conn
+        self, importer, test_client, mock_conn
     ):
         submissions = SECSubmissions(
             cik="0000320193",
@@ -259,7 +290,7 @@ class TestSECImporterSubmissions:
                 ),
             ],
         )
-        mock_client.get_submissions = AsyncMock(return_value=submissions)
+        test_client.get_submissions = AsyncMock(return_value=submissions)
 
         # Mock company exists
         mock_conn.set_cursor_results(
@@ -285,11 +316,11 @@ class TestSECImporterCompanyFacts:
 
     @pytest.mark.asyncio
     async def test_import_company_facts_not_found(
-        self, importer, mock_client, mock_conn
+        self, importer, test_client, mock_conn
     ):
         from financial_database.providers.sec.client import SECNotFoundError
 
-        mock_client.get_company_facts = AsyncMock(
+        test_client.get_company_facts = AsyncMock(
             side_effect=SECNotFoundError("Not found")
         )
         mock_conn.set_cursor_results(
@@ -306,7 +337,7 @@ class TestSECImporterCompanyFacts:
 
     @pytest.mark.asyncio
     async def test_import_company_facts_parses_and_inserts(
-        self, importer, mock_client, mock_conn
+        self, importer, test_client, mock_conn
     ):
         facts = SECCompanyFacts(
             cik="0000320193",
@@ -333,7 +364,7 @@ class TestSECImporterCompanyFacts:
                 },
             },
         )
-        mock_client.get_company_facts = AsyncMock(return_value=facts)
+        test_client.get_company_facts = AsyncMock(return_value=facts)
 
         mock_conn.set_cursor_results(
             [

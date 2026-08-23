@@ -38,3 +38,11 @@ venv = ".venv"
 [tool.pytest]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "psycopg2-binary>=2.9.12",
+    "pytest-asyncio>=1.4.0",
+    "sqlalchemy>=2.0.52",
+]
