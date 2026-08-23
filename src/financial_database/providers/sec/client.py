@@ -8,7 +8,7 @@ import os
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 from urllib.parse import urljoin
 
 import aiohttp
@@ -68,7 +68,9 @@ class SECClient:
             raise ValueError(
                 "SEC_USER_AGENT is required. Set via environment variable or constructor."
             )
-        self._raw_dir = raw_dir or Path(os.environ.get("DATA_RAW_DIR", "./data/raw")) / "sec"
+        self._raw_dir = (
+            raw_dir or Path(os.environ.get("DATA_RAW_DIR", "./data/raw")) / "sec"
+        )
         self._timeout = timeout or DEFAULT_TIMEOUT
         self._session: aiohttp.ClientSession | None = None
         self._last_request_time = 0.0
@@ -78,7 +80,7 @@ class SECClient:
         for subdir in ["submissions", "companyfacts", "reference"]:
             (self._raw_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    async def __aenter__(self) -> "SECClient":
+    async def __aenter__(self) -> Self:
         await self._ensure_session()
         return self
 
@@ -117,7 +119,7 @@ class SECClient:
         """Calculate exponential backoff delay."""
         if retry_after is not None:
             return min(float(retry_after), MAX_DELAY)
-        delay = BASE_DELAY * (2 ** attempt)
+        delay = BASE_DELAY * (2**attempt)
         return min(delay, MAX_DELAY)
 
     async def _request(
@@ -154,26 +156,42 @@ class SECClient:
 
                     elif response.status == 429:
                         retry_after = response.headers.get("Retry-After")
-                        delay = self._calculate_backoff(attempt, int(retry_after) if retry_after else None)
+                        delay = self._calculate_backoff(
+                            attempt, int(retry_after) if retry_after else None
+                        )
                         logger.warning(
                             "SEC rate limit hit, backing off",
-                            extra={"url": url, "attempt": attempt, "delay": delay, "retry_after": retry_after},
+                            extra={
+                                "url": url,
+                                "attempt": attempt,
+                                "delay": delay,
+                                "retry_after": retry_after,
+                            },
                         )
                         if attempt < max_retries:
                             await asyncio.sleep(delay)
                             continue
-                        raise SECRateLimitError(f"Rate limit exceeded after {max_retries} retries")
+                        raise SECRateLimitError(
+                            f"Rate limit exceeded after {max_retries} retries"
+                        )
 
                     elif 500 <= response.status < 600:
                         delay = self._calculate_backoff(attempt)
                         logger.warning(
                             "SEC server error, retrying",
-                            extra={"url": url, "status": response.status, "attempt": attempt, "delay": delay},
+                            extra={
+                                "url": url,
+                                "status": response.status,
+                                "attempt": attempt,
+                                "delay": delay,
+                            },
                         )
                         if attempt < max_retries:
                             await asyncio.sleep(delay)
                             continue
-                        raise SECServerError(f"Server error {response.status} after {max_retries} retries")
+                        raise SECServerError(
+                            f"Server error {response.status} after {max_retries} retries"
+                        )
 
                     else:
                         text = await response.text()
@@ -184,12 +202,19 @@ class SECClient:
                 delay = self._calculate_backoff(attempt)
                 logger.warning(
                     "SEC request failed, retrying",
-                    extra={"url": url, "attempt": attempt, "delay": delay, "error": str(e)},
+                    extra={
+                        "url": url,
+                        "attempt": attempt,
+                        "delay": delay,
+                        "error": str(e),
+                    },
                 )
                 if attempt < max_retries:
                     await asyncio.sleep(delay)
                     continue
-                raise SECClientError(f"Request failed after {max_retries} retries: {last_error}") from last_error
+                raise SECClientError(
+                    f"Request failed after {max_retries} retries: {last_error}"
+                ) from last_error
 
         raise SECClientError(f"Unexpected error after retries: {last_error}")
 
@@ -211,18 +236,24 @@ class SECClient:
         if filepath.exists():
             existing_checksum = hashlib.sha256(filepath.read_bytes()).hexdigest()
             if existing_checksum == checksum:
-                logger.debug("Raw file unchanged, skipping write", extra={"path": str(filepath)})
+                logger.debug(
+                    "Raw file unchanged, skipping write", extra={"path": str(filepath)}
+                )
                 return str(filepath), checksum
             else:
                 # Content changed - preserve old version with timestamp
                 timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
                 backup_path = filepath.with_stem(f"{filepath.stem}_{timestamp}")
                 filepath.rename(backup_path)
-                logger.info("Raw file changed, preserved previous version",
-                           extra={"old_path": str(backup_path), "new_path": str(filepath)})
+                logger.info(
+                    "Raw file changed, preserved previous version",
+                    extra={"old_path": str(backup_path), "new_path": str(filepath)},
+                )
 
         filepath.write_bytes(content)
-        logger.info("Raw file saved", extra={"path": str(filepath), "checksum": checksum[:16]})
+        logger.info(
+            "Raw file saved", extra={"path": str(filepath), "checksum": checksum[:16]}
+        )
         return str(filepath), checksum
 
     async def get_company_tickers(self) -> list[SECCompany]:
@@ -240,15 +271,17 @@ class SECClient:
             # data format: [cik, name, ticker, exchange, sic, sic_description, owner_org]
             if len(item) >= 3:
                 cik = str(item[0]).zfill(10)
-                companies.append(SECCompany(
-                    cik=cik,
-                    name=item[1],
-                    ticker=item[2] if item[2] else None,
-                    exchange=item[3] if len(item) > 3 and item[3] else None,
-                    sic=item[4] if len(item) > 4 and item[4] else None,
-                    sic_description=item[5] if len(item) > 5 and item[5] else None,
-                    owner_org=item[6] if len(item) > 6 and item[6] else None,
-                ))
+                companies.append(
+                    SECCompany(
+                        cik=cik,
+                        name=item[1],
+                        ticker=item[2] if item[2] else None,
+                        exchange=item[3] if len(item) > 3 and item[3] else None,
+                        sic=item[4] if len(item) > 4 and item[4] else None,
+                        sic_description=item[5] if len(item) > 5 and item[5] else None,
+                        owner_org=item[6] if len(item) > 6 and item[6] else None,
+                    )
+                )
 
         logger.info("Fetched SEC companies", extra={"count": len(companies)})
         return companies
@@ -272,20 +305,29 @@ class SECClient:
             count = len(recent.get("accessionNumber", []))
             for i in range(count):
                 filing_date_str = recent.get("filingDate", [None] * count)[i]
-                period_end_str = recent.get("periodOfReport", [None] * count)[i]
+                # SEC uses 'reportDate' for period end (can be empty string)
+                period_end_str = recent.get("reportDate", [None] * count)[i]
+                if period_end_str == "":
+                    period_end_str = None
 
                 filing = SECFiling(
                     accession_number=recent.get("accessionNumber", [None] * count)[i],
                     form=recent.get("form", [None] * count)[i],
                     filing_date=filing_date_str if filing_date_str else None,
                     period_start=None,  # Not directly provided in recent
-                    period_end=period_end_str if period_end_str else None,
+                    period_end=period_end_str,
                     fiscal_year=recent.get("fy", [None] * count)[i],
                     fiscal_period=recent.get("fp", [None] * count)[i],
-                    filing_url=urljoin(SEC_BASE_URL, f"/Archives/edgar/data/{int(normalized_cik)}/{recent.get('accessionNumber', [None] * count)[i].replace('-', '')}/{recent.get('primaryDocument', [None] * count)[i]}"),
-                    is_amended=recent.get("form", [None] * count)[i] and recent.get("form", [None] * count)[i].endswith("/A"),
+                    filing_url=urljoin(
+                        SEC_BASE_URL,
+                        f"/Archives/edgar/data/{int(normalized_cik)}/{recent.get('accessionNumber', [None] * count)[i].replace('-', '')}/{recent.get('primaryDocument', [None] * count)[i]}",
+                    ),
+                    is_amended=recent.get("form", [None] * count)[i]
+                    and recent.get("form", [None] * count)[i].endswith("/A"),
                     primary_document=recent.get("primaryDocument", [None] * count)[i],
-                    primary_doc_description=recent.get("primaryDocDescription", [None] * count)[i],
+                    primary_doc_description=recent.get(
+                        "primaryDocDescription", [None] * count
+                    )[i],
                 )
                 filings.append(filing)
 
@@ -335,20 +377,38 @@ class SECClient:
                         # Determine if instant or duration
                         is_instant = period_start is None or period_start == period_end
 
-                        values.append(SECCompanyFactValue(
-                            value=val_data.get("val", 0),
-                            period_start=period_start,
-                            period_end=period_end,
-                            fiscal_year=val_data.get("fy"),
-                            fiscal_period=val_data.get("fp"),
-                            form=val_data.get("form"),
-                            filing_date=date.fromisoformat(val_data["filed"]) if val_data.get("filed") else None,
-                            accession_number=val_data.get("accn"),
-                            frame=val_data.get("frame"),
-                            is_instant=is_instant,
-                            metadata={k: v for k, v in val_data.items()
-                                      if k not in {"val", "start", "end", "fy", "fp", "form", "filed", "accn", "frame"}},
-                        ))
+                        values.append(
+                            SECCompanyFactValue(
+                                value=val_data.get("val", 0),
+                                period_start=period_start,
+                                period_end=period_end,
+                                fiscal_year=val_data.get("fy"),
+                                fiscal_period=val_data.get("fp"),
+                                form=val_data.get("form"),
+                                filing_date=date.fromisoformat(val_data["filed"])
+                                if val_data.get("filed")
+                                else None,
+                                accession_number=val_data.get("accn"),
+                                frame=val_data.get("frame"),
+                                is_instant=is_instant,
+                                metadata={
+                                    k: v
+                                    for k, v in val_data.items()
+                                    if k
+                                    not in {
+                                        "val",
+                                        "start",
+                                        "end",
+                                        "fy",
+                                        "fp",
+                                        "form",
+                                        "filed",
+                                        "accn",
+                                        "frame",
+                                    }
+                                },
+                            )
+                        )
 
                 fact = SECCompanyFact(
                     concept=concept_name,
@@ -363,5 +423,7 @@ class SECClient:
             cik=normalized_cik,
             entity_name=data.get("entityName", ""),
             facts=facts,
-            metadata={k: v for k, v in data.items() if k not in {"facts", "entityName"}},
+            metadata={
+                k: v for k, v in data.items() if k not in {"facts", "entityName"}
+            },
         )

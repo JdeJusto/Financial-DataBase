@@ -47,9 +47,9 @@ def db_session(db_engine):
     transaction = connection.begin()
     Session = sessionmaker(bind=connection)
     session = Session()
-    
+
     yield session
-    
+
     session.close()
     transaction.rollback()
     connection.close()
@@ -69,7 +69,5 @@ def async_db_engine(test_db_url):
 async def async_db_session(async_db_engine):
     """Create an async database session for testing."""
     async with async_db_engine.begin() as conn:
-        async_session = AsyncSession(
-            async_db_engine, expire_on_commit=False, bind=conn
-        )
+        async_session = AsyncSession(async_db_engine, expire_on_commit=False, bind=conn)
         yield async_session

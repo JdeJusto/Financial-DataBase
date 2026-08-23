@@ -1,6 +1,5 @@
 """Unit tests for SEC provider models and utilities."""
 
-
 from financial_database.providers.sec.models import (
     SEC_EXCHANGE_MAP,
     SECCompany,
@@ -46,13 +45,17 @@ class TestAccessionNormalization:
     """Tests for accession number normalization."""
 
     def test_normalize_accession_standard(self):
-        assert normalize_accession_number("0000320193-23-000106") == "000032019323000106"
+        assert (
+            normalize_accession_number("0000320193-23-000106") == "000032019323000106"
+        )
 
     def test_normalize_accession_no_dashes(self):
         assert normalize_accession_number("000032019323000106") == "000032019323000106"
 
     def test_normalize_accession_with_spaces(self):
-        assert normalize_accession_number(" 0000320193-23-000106 ") == "000032019323000106"
+        assert (
+            normalize_accession_number(" 0000320193-23-000106 ") == "000032019323000106"
+        )
 
     def test_normalize_accession_empty(self):
         assert normalize_accession_number("") == ""
@@ -132,6 +135,7 @@ class TestSECFiling:
 
     def test_sec_filing_creation(self):
         from datetime import date
+
         filing = SECFiling(
             accession_number="0000320193-23-000106",
             form="10-K",
@@ -188,6 +192,7 @@ class TestSECCompanyFactValue:
 
     def test_sec_company_fact_value_creation(self):
         from datetime import date
+
         value = SECCompanyFactValue(
             value=1000000,
             period_start=date(2023, 1, 1),
@@ -202,6 +207,7 @@ class TestSECCompanyFactValue:
 
     def test_sec_company_fact_value_instant(self):
         from datetime import date
+
         value = SECCompanyFactValue(
             value=500000,
             period_start=None,

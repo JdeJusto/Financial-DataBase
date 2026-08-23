@@ -4,15 +4,20 @@ Handles exchanges where companies list.
 """
 
 
-
 class ExchangeRepository:
     """Repository for exchanges table."""
 
     def __init__(self, conn):
         self.conn = conn
 
-    def create(self, code: str, name: str, country: str | None = None,
-               timezone: str | None = None, currency: str | None = None) -> dict:
+    def create(
+        self,
+        code: str,
+        name: str,
+        country: str | None = None,
+        timezone: str | None = None,
+        currency: str | None = None,
+    ) -> dict:
         """Create a new exchange."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -20,7 +25,7 @@ class ExchangeRepository:
                    VALUES (%s, %s, %s, %s, %s)
                    ON CONFLICT (code) DO NOTHING
                    RETURNING id, code, name, country, timezone, currency, created_at""",
-                (code, name, country, timezone, currency)
+                (code, name, country, timezone, currency),
             )
             return cur.fetchone()
 
@@ -29,7 +34,7 @@ class ExchangeRepository:
         with self.conn.cursor() as cur:
             cur.execute(
                 "SELECT id, code, name, country, timezone, currency, created_at FROM exchanges WHERE code = %s",
-                (code,)
+                (code,),
             )
             row = cur.fetchone()
             return dict(row) if row else None

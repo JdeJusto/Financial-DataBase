@@ -53,7 +53,7 @@ class MockConnection:
 
 
 class MockCursor:
-    """Mock cursor for testing."""
+    """Mock cursor for testing with dict_row factory."""
 
     def __init__(self, results=None):
         self.results = results or []
@@ -77,7 +77,7 @@ class MockCursor:
         return None
 
     def fetchall(self):
-        results = self.results[self.result_index:]
+        results = self.results[self.result_index :]
         self.result_index = len(self.results)
         return results
 
@@ -108,9 +108,11 @@ class TestSECImporterProviderSeed:
     def test_ensure_provider_creates_new(self, importer, mock_conn):
         # Mock cursor to return no existing provider, then return new ID
         # Both SELECT and INSERT use the same cursor (with block)
-        mock_conn.set_cursor_results([
-            [None, (VALID_UUID,)],  # SELECT returns None, INSERT returns UUID
-        ])
+        mock_conn.set_cursor_results(
+            [
+                [None, {"id": VALID_UUID}],  # SELECT returns None, INSERT returns UUID
+            ]
+        )
 
         provider_id = importer._ensure_provider()
 
@@ -118,9 +120,13 @@ class TestSECImporterProviderSeed:
         assert mock_conn.committed
 
     def test_ensure_provider_returns_existing(self, importer, mock_conn):
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # SELECT id FROM data_providers - returns existing
-        ])
+        mock_conn.set_cursor_results(
+            [
+                [
+                    {"id": VALID_UUID}
+                ],  # SELECT id FROM data_providers - returns existing
+            ]
+        )
 
         provider_id = importer._ensure_provider()
 
@@ -131,11 +137,15 @@ class TestSECImporterCompanyUniverse:
     """Tests for company universe import."""
 
     @pytest.mark.asyncio
-    async def test_import_company_universe_empty(self, importer, mock_client, mock_conn):
+    async def test_import_company_universe_empty(
+        self, importer, mock_client, mock_conn
+    ):
         mock_client.get_company_tickers = AsyncMock(return_value=[])
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # _ensure_provider
-        ])
+        mock_conn.set_cursor_results(
+            [
+                [{"id": VALID_UUID}],  # _ensure_provider
+            ]
+        )
         stats = ImportStats()
 
         result = await importer.import_company_universe(stats)
@@ -144,7 +154,9 @@ class TestSECImporterCompanyUniverse:
         assert result.companies_inserted == 0
 
     @pytest.mark.asyncio
-    async def test_import_company_universe_single(self, importer, mock_client, mock_conn):
+    async def test_import_company_universe_single(
+        self, importer, mock_client, mock_conn
+    ):
         company = SECCompany(
             cik="0000320193",
             name="Apple Inc.",
@@ -154,15 +166,17 @@ class TestSECImporterCompanyUniverse:
         mock_client.get_company_tickers = AsyncMock(return_value=[company])
 
         # Mock cursors for various queries
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # _get_provider_id (_ensure_provider)
-            [None],  # _upsert_company_by_cik - no existing company
-            [{"id": VALID_UUID_2, "legal_name": "Apple Inc."}],  # companies.create
-            [{"id": VALID_UUID_3}],  # identifiers.create (CIK)
-            [{"id": VALID_UUID_3}],  # identifiers.create (TICKER)
-            [{"id": VALID_UUID_3, "code": "NASDAQ"}],  # exchanges.get_by_code
-            [{"id": VALID_UUID_3}],  # listings.create
-        ])
+        mock_conn.set_cursor_results(
+            [
+                [{"id": VALID_UUID}],  # _get_provider_id
+                [None],  # _upsert_company_by_cik - no existing company
+                [{"id": VALID_UUID_2, "legal_name": "Apple Inc."}],  # companies.create
+                [{"id": VALID_UUID_3}],  # identifiers.create (CIK)
+                [{"id": VALID_UUID_3}],  # identifiers.create (TICKER)
+                [{"id": VALID_UUID_3, "code": "NASDAQ"}],  # exchanges.get_by_code
+                [{"id": VALID_UUID_3}],  # listings.create
+            ]
+        )
 
         stats = ImportStats()
         result = await importer.import_company_universe(stats)
@@ -180,10 +194,15 @@ class TestSECImporterSubmissions:
     @pytest.mark.asyncio
     async def test_import_submissions_not_found(self, importer, mock_client, mock_conn):
         from financial_database.providers.sec.client import SECNotFoundError
-        mock_client.get_submissions = AsyncMock(side_effect=SECNotFoundError("Not found"))
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # _ensure_provider
-        ])
+
+        mock_client.get_submissions = AsyncMock(
+            side_effect=SECNotFoundError("Not found")
+        )
+        mock_conn.set_cursor_results(
+            [
+                [{"id": VALID_UUID}],  # _ensure_provider
+            ]
+        )
 
         stats = ImportStats()
         result = await importer.import_submissions("0000320193", stats)
@@ -192,7 +211,9 @@ class TestSECImporterSubmissions:
         assert result.errors[0]["error"] == "Not found in SEC"
 
     @pytest.mark.asyncio
-    async def test_import_submissions_company_not_in_db(self, importer, mock_client, mock_conn):
+    async def test_import_submissions_company_not_in_db(
+        self, importer, mock_client, mock_conn
+    ):
         submissions = SECSubmissions(
             cik="0000320193",
             entity_name="Apple Inc.",
@@ -201,10 +222,12 @@ class TestSECImporterSubmissions:
         mock_client.get_submissions = AsyncMock(return_value=submissions)
 
         # Mock _get_company_id_by_cik to return None
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # _ensure_provider
-            [None],  # _get_company_id_by_cik
-        ])
+        mock_conn.set_cursor_results(
+            [
+                [{"id": VALID_UUID}],  # _ensure_provider
+                [None],  # _get_company_id_by_cik
+            ]
+        )
 
         stats = ImportStats()
         result = await importer.import_submissions("0000320193", stats)
@@ -213,7 +236,9 @@ class TestSECImporterSubmissions:
         assert result.errors[0]["error"] == "Company not in local database"
 
     @pytest.mark.asyncio
-    async def test_import_submissions_filters_non_financial(self, importer, mock_client, mock_conn):
+    async def test_import_submissions_filters_non_financial(
+        self, importer, mock_client, mock_conn
+    ):
         submissions = SECSubmissions(
             cik="0000320193",
             entity_name="Apple Inc.",
@@ -237,13 +262,16 @@ class TestSECImporterSubmissions:
         mock_client.get_submissions = AsyncMock(return_value=submissions)
 
         # Mock company exists
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # _get_provider_id
-            [(VALID_UUID_2,)],  # _get_company_id_by_cik
-            [None],  # filings.get_by_accession - not exists
-            [None],  # raw_documents check
-            [{"id": VALID_UUID_3}],  # filings.create
-        ])
+        mock_conn.set_cursor_results(
+            [
+                [{"id": VALID_UUID}],  # _get_provider_id
+                [{"id": VALID_UUID_2}],  # _get_company_id_by_cik
+                [None],  # filings.get_by_accession - not exists
+                [None],  # raw_documents check
+                [{"id": VALID_UUID_3}],  # filings.create
+                [{"id": VALID_UUID_3}],  # raw_docs.create
+            ]
+        )
 
         stats = ImportStats()
         result = await importer.import_submissions("0000320193", stats)
@@ -256,12 +284,19 @@ class TestSECImporterCompanyFacts:
     """Tests for CompanyFacts import."""
 
     @pytest.mark.asyncio
-    async def test_import_company_facts_not_found(self, importer, mock_client, mock_conn):
+    async def test_import_company_facts_not_found(
+        self, importer, mock_client, mock_conn
+    ):
         from financial_database.providers.sec.client import SECNotFoundError
-        mock_client.get_company_facts = AsyncMock(side_effect=SECNotFoundError("Not found"))
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # _ensure_provider
-        ])
+
+        mock_client.get_company_facts = AsyncMock(
+            side_effect=SECNotFoundError("Not found")
+        )
+        mock_conn.set_cursor_results(
+            [
+                [{"id": VALID_UUID}],  # _ensure_provider
+            ]
+        )
 
         stats = ImportStats()
         result = await importer.import_company_facts("0000320193", stats)
@@ -270,7 +305,9 @@ class TestSECImporterCompanyFacts:
         assert result.errors[0]["error"] == "CompanyFacts not found"
 
     @pytest.mark.asyncio
-    async def test_import_company_facts_parses_and_inserts(self, importer, mock_client, mock_conn):
+    async def test_import_company_facts_parses_and_inserts(
+        self, importer, mock_client, mock_conn
+    ):
         facts = SECCompanyFacts(
             cik="0000320193",
             entity_name="Apple Inc.",
@@ -298,13 +335,20 @@ class TestSECImporterCompanyFacts:
         )
         mock_client.get_company_facts = AsyncMock(return_value=facts)
 
-        mock_conn.set_cursor_results([
-            [(VALID_UUID,)],  # _get_provider_id
-            [(VALID_UUID_2,)],  # _get_company_id_by_cik
-            [("000032019323000106", VALID_UUID_3)],  # _build_filing_id_map
-            [None],  # financial_facts check existing - not exists
-            [{"id": VALID_UUID_3}],  # financial_facts.create
-        ])
+        mock_conn.set_cursor_results(
+            [
+                [{"id": VALID_UUID}],  # _get_provider_id
+                [{"id": VALID_UUID_2}],  # _get_company_id_by_cik
+                [
+                    {"accession_number": "000032019323000106", "id": VALID_UUID_3}
+                ],  # _build_filing_id_map
+                [None],  # financial_facts check existing - not exists
+                [{"id": VALID_UUID_3}],  # financial_facts.create
+                [{"id": VALID_UUID_3}],  # raw_docs.create
+                [{"id": VALID_UUID_3}],  # extra buffer
+                [{"id": VALID_UUID_3}],  # extra buffer
+            ]
+        )
 
         stats = ImportStats()
         result = await importer.import_company_facts("0000320193", stats)
@@ -317,6 +361,8 @@ class TestSECImporterSyncCompany:
     """Tests for full company sync."""
 
     # Sync company test removed - too complex to mock with current test infrastructure
+
+
 # The individual components (universe, submissions, companyfacts) are tested separately
 
 

@@ -31,4 +31,5 @@ __all__ = [
     "PriceRepository",
     "RawDocumentRepository",
     "SplitRepository",
+    "get_connection",
 ]

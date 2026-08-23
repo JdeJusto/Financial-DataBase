@@ -5,7 +5,6 @@ Tracks provenance of data loading operations.
 """
 
 
-
 class ImportRunRepository:
     """Repository for import_runs table."""
 
@@ -21,17 +20,22 @@ class ImportRunRepository:
                    RETURNING id, provider_id, pipeline, status, records_processed, records_inserted,
                    records_updated, records_skipped, errors, started_at, finished_at,
                    duration_seconds""",
-                (provider_id, pipeline, status)
+                (provider_id, pipeline, status),
             )
             return cur.fetchone()
 
-    def update(self, run_id: str, status: str | None = None,
-               records_processed: int | None = None,
-               records_inserted: int | None = None,
-               records_updated: int | None = None,
-               records_skipped: int | None = None,
-               errors: dict | None = None,
-               finished_at = None, duration_seconds: int | None = None) -> None:
+    def update(
+        self,
+        run_id: str,
+        status: str | None = None,
+        records_processed: int | None = None,
+        records_inserted: int | None = None,
+        records_updated: int | None = None,
+        records_skipped: int | None = None,
+        errors: dict | None = None,
+        finished_at=None,
+        duration_seconds: int | None = None,
+    ) -> None:
         """Update an import run record."""
         set_parts = []
         params = []
@@ -53,7 +57,9 @@ class ImportRunRepository:
             params.append(records_skipped)
         if errors is not None:
             set_parts.append("errors = %s")
-            params.append(errors)
+            import json
+
+            params.append(json.dumps(errors))
         if finished_at is not None:
             set_parts.append("finished_at = %s")
             params.append(finished_at)
@@ -76,7 +82,7 @@ class ImportRunRepository:
                 "SELECT id, provider_id, pipeline, status, records_processed, records_inserted, "
                 "records_updated, records_skipped, errors, started_at, finished_at, "
                 "duration_seconds FROM import_runs WHERE provider_id = %s ORDER BY started_at DESC",
-                (provider_id,)
+                (provider_id,),
             )
             return [dict(row) for row in cur.fetchall()]
 
@@ -87,7 +93,7 @@ class ImportRunRepository:
                 "SELECT id, provider_id, pipeline, status, records_processed, records_inserted, "
                 "records_updated, records_skipped, errors, started_at, finished_at, "
                 "duration_seconds FROM import_runs WHERE provider_id = %s ORDER BY started_at DESC LIMIT 1",
-                (provider_id,)
+                (provider_id,),
             )
             row = cur.fetchone()
             return dict(row) if row else None

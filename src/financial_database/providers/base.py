@@ -8,6 +8,7 @@ from typing import Any
 @dataclass
 class ImportResult:
     """Result of an import operation."""
+
     records_processed: int = 0
     records_inserted: int = 0
     records_updated: int = 0

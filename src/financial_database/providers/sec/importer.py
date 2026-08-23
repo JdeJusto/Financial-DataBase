@@ -48,6 +48,7 @@ SEC_PROVIDER_TYPE = "sec"
 @dataclass
 class ImportStats:
     """Statistics for an import operation."""
+
     companies_processed: int = 0
     companies_inserted: int = 0
     companies_updated: int = 0
@@ -127,8 +128,7 @@ class SECImporter:
         """Ensure SEC provider exists in data_providers table."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM data_providers WHERE name = %s",
-                (SEC_PROVIDER_NAME,)
+                "SELECT id FROM data_providers WHERE name = %s", (SEC_PROVIDER_NAME,)
             )
             row = cur.fetchone()
             if row:
@@ -139,7 +139,14 @@ class SECImporter:
                 """INSERT INTO data_providers (name, type, display_name, base_url, rate_limit_per_second, is_active)
                    VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING id""",
-                (SEC_PROVIDER_NAME, SEC_PROVIDER_TYPE, "SEC EDGAR", "https://www.sec.gov", 10.0, True)
+                (
+                    SEC_PROVIDER_NAME,
+                    SEC_PROVIDER_TYPE,
+                    "SEC EDGAR",
+                    "https://www.sec.gov",
+                    10.0,
+                    True,
+                ),
             )
             provider_id = uuid.UUID(str(cur.fetchone()["id"]))
             self.conn.commit()
@@ -164,7 +171,9 @@ class SECImporter:
             logger.info("Seeded exchanges", extra={"inserted": inserted})
         return inserted
 
-    async def import_company_universe(self, stats: ImportStats | None = None) -> ImportStats:
+    async def import_company_universe(
+        self, stats: ImportStats | None = None
+    ) -> ImportStats:
         """Import SEC company universe (tickers, CIKs, exchanges)."""
         stats = stats or ImportStats()
         provider_id = self._get_provider_id()
@@ -177,6 +186,7 @@ class SECImporter:
         if raw_doc_path.exists():
             import hashlib
             import json
+
             checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
             self.raw_docs.create(
                 provider_id=str(provider_id),
@@ -247,19 +257,45 @@ class SECImporter:
                 exchange = exchange_result
 
             if exchange:
-                result = self.listings.create(
-                    company_id=company_id,
-                    exchange_id=str(exchange["id"]),
-                    ticker=listing.ticker,
-                    share_class=listing.share_class,
-                    listing_date=str(listing.listing_date) if listing.listing_date else None,
-                    delisting_date=str(listing.delisting_date) if listing.delisting_date else None,
-                    is_primary=listing.is_primary,
-                )
-                if result:
-                    stats.listings_inserted += 1
-                else:
+                # Check for existing active listing to avoid duplicates
+                # Normalize empty share_class to None for consistent comparison
+                share_class_norm = listing.share_class if listing.share_class else None
+                existing_listing_id = None
+                with self.conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT id FROM company_listings
+                           WHERE company_id = %s AND exchange_id = %s AND ticker = %s
+                           AND share_class IS NOT DISTINCT FROM %s
+                           AND delisting_date IS NULL""",
+                        (
+                            company_id,
+                            str(exchange["id"]),
+                            listing.ticker,
+                            share_class_norm,
+                        ),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        existing_listing_id = row["id"]
+
+                if existing_listing_id:
                     stats.listings_updated += 1
+                else:
+                    result = self.listings.create(
+                        company_id=company_id,
+                        exchange_id=str(exchange["id"]),
+                        ticker=listing.ticker,
+                        share_class=share_class_norm,
+                        listing_date=str(listing.listing_date)
+                        if listing.listing_date
+                        else None,
+                        delisting_date=str(listing.delisting_date)
+                        if listing.delisting_date
+                        else None,
+                        is_primary=listing.is_primary,
+                    )
+                    if result:
+                        stats.listings_inserted += 1
 
     def _upsert_company_by_cik(self, parsed: ParsedCompany, stats: ImportStats) -> str:
         """Upsert company by CIK identifier."""
@@ -269,7 +305,7 @@ class SECImporter:
                 """SELECT c.id FROM companies c
                    JOIN company_identifiers ci ON c.id = ci.company_id
                    WHERE ci.identifier_type = 'CIK' AND ci.identifier_value = %s""",
-                (parsed.cik,)
+                (parsed.cik,),
             )
             row = cur.fetchone()
 
@@ -328,7 +364,9 @@ class SECImporter:
         # Get company_id
         company_id = self._get_company_id_by_cik(cik)
         if not company_id:
-            logger.warning("Company not in database, skipping submissions", extra={"cik": cik})
+            logger.warning(
+                "Company not in database, skipping submissions", extra={"cik": cik}
+            )
             stats.errors.append({"cik": cik, "error": "Company not in local database"})
             return stats
 
@@ -337,6 +375,7 @@ class SECImporter:
         if raw_doc_path.exists():
             import hashlib
             import json
+
             checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
             self.raw_docs.create(
                 provider_id=str(provider_id),
@@ -366,7 +405,9 @@ class SECImporter:
                 logger.error("Failed to import filing", extra=error_info)
 
         self.conn.commit()
-        logger.info("Submissions import complete", extra={"cik": cik, **stats.to_dict()})
+        logger.info(
+            "Submissions import complete", extra={"cik": cik, **stats.to_dict()}
+        )
         return stats
 
     def _get_company_id_by_cik(self, cik: str) -> str | None:
@@ -377,7 +418,7 @@ class SECImporter:
                 """SELECT c.id FROM companies c
                    JOIN company_identifiers ci ON c.id = ci.company_id
                    WHERE ci.identifier_type = 'CIK' AND ci.identifier_value = %s""",
-                (normalized,)
+                (normalized,),
             )
             row = cur.fetchone()
             return str(row["id"]) if row else None
@@ -391,7 +432,9 @@ class SECImporter:
     ) -> str | None:
         """Import a single filing."""
         # Check if filing already exists
-        existing = self.filings.get_by_accession(str(provider_id), filing.accession_number)
+        existing = self.filings.get_by_accession(
+            str(provider_id), filing.accession_number
+        )
         if existing:
             stats.filings_skipped += 1
             return str(existing["id"])
@@ -402,7 +445,7 @@ class SECImporter:
             cur.execute(
                 """SELECT id FROM raw_documents
                    WHERE provider_id = %s AND source_identifier = %s""",
-                (str(provider_id), filing.accession_number)
+                (str(provider_id), filing.accession_number),
             )
             row = cur.fetchone()
             if row:
@@ -455,7 +498,9 @@ class SECImporter:
         # Get company_id
         company_id = self._get_company_id_by_cik(cik)
         if not company_id:
-            logger.warning("Company not in database, skipping facts", extra={"cik": cik})
+            logger.warning(
+                "Company not in database, skipping facts", extra={"cik": cik}
+            )
             stats.errors.append({"cik": cik, "error": "Company not in local database"})
             return stats
 
@@ -464,7 +509,19 @@ class SECImporter:
         if raw_doc_path.exists():
             import hashlib
             import json
-            checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
+
+            try:
+                file_bytes = raw_doc_path.read_bytes()
+                checksum = hashlib.sha256(file_bytes).hexdigest()
+            except OSError:
+                # Fallback: read as text and encode
+                file_text = raw_doc_path.read_text(encoding="utf-8")
+                if isinstance(file_text, str):
+                    checksum = hashlib.sha256(file_text.encode("utf-8")).hexdigest()
+                else:
+                    checksum = hashlib.sha256(
+                        str(file_text).encode("utf-8")
+                    ).hexdigest()
             self.raw_docs.create(
                 provider_id=str(provider_id),
                 source_identifier=f"companyfacts:{cik.zfill(10)}",
@@ -503,20 +560,25 @@ class SECImporter:
                 logger.error("Failed to import fact", extra=error_info)
 
         self.conn.commit()
-        logger.info("CompanyFacts import complete", extra={"cik": cik, **stats.to_dict()})
+        logger.info(
+            "CompanyFacts import complete", extra={"cik": cik, **stats.to_dict()}
+        )
         return stats
 
-    def _build_filing_id_map(self, company_id: str, provider_id: uuid.UUID) -> dict[str, str]:
+    def _build_filing_id_map(
+        self, company_id: str, provider_id: uuid.UUID
+    ) -> dict[str, str]:
         """Build mapping from accession_number to internal filing_id."""
         mapping = {}
         with self.conn.cursor() as cur:
             cur.execute(
                 """SELECT accession_number, id FROM filings
                    WHERE company_id = %s AND provider_id = %s""",
-                (company_id, str(provider_id))
+                (company_id, str(provider_id)),
             )
             for row in cur.fetchall():
-                mapping[row["accession_number"]] = str(row["id"])
+                if row is not None:
+                    mapping[row["accession_number"]] = str(row["id"])
         return mapping
 
     def _import_financial_fact(
@@ -541,8 +603,14 @@ class SECImporter:
                    AND period_end = %s
                    AND filing_id IS NOT DISTINCT FROM %s
                    AND source_id = %s""",
-                (company_id, fact.concept, fact.period_start, fact.period_end,
-                 fact.filing_id, fact.source_id)
+                (
+                    company_id,
+                    fact.concept,
+                    fact.period_start,
+                    fact.period_end,
+                    fact.filing_id,
+                    fact.source_id,
+                ),
             )
             if cur.fetchone():
                 stats.facts_skipped += 1
@@ -563,6 +631,8 @@ class SECImporter:
             filing_id=fact.filing_id,
             form=fact.form,
             filing_date=str(fact.filing_date) if fact.filing_date else None,
+            namespace=fact.namespace,
+            frame=fact.frame,
         )
 
         if result:
@@ -575,9 +645,11 @@ class SECImporter:
         cik: str,
         include_facts: bool = True,
         include_filings: bool = True,
+        stats: ImportStats | None = None,
     ) -> ImportStats:
         """Full sync for a single company: universe + submissions + companyfacts."""
-        stats = ImportStats()
+        if stats is None:
+            stats = ImportStats()
 
         # Ensure provider and exchanges
         self._get_provider_id()
@@ -586,7 +658,9 @@ class SECImporter:
         # Import company universe (this specific company)
         # We need to fetch the company from the universe first
         companies = await self.client.get_company_tickers()
-        target_company = next((c for c in companies if normalize_cik(c.cik) == normalize_cik(cik)), None)
+        target_company = next(
+            (c for c in companies if normalize_cik(c.cik) == normalize_cik(cik)), None
+        )
         if target_company:
             self._import_single_company(target_company, self._get_provider_id(), stats)
         else:
@@ -637,8 +711,12 @@ class SECImporter:
             self.import_runs.update(
                 run_id,
                 status="success",
-                records_processed=stats.companies_processed + stats.filings_processed + stats.facts_processed,
-                records_inserted=stats.companies_inserted + stats.filings_inserted + stats.facts_inserted,
+                records_processed=stats.companies_processed
+                + stats.filings_processed
+                + stats.facts_processed,
+                records_inserted=stats.companies_inserted
+                + stats.filings_inserted
+                + stats.facts_inserted,
                 records_updated=stats.companies_updated + stats.listings_updated,
                 records_skipped=stats.filings_skipped + stats.facts_skipped,
                 finished_at=datetime.now(UTC),
@@ -651,15 +729,21 @@ class SECImporter:
             self.import_runs.update(
                 run_id,
                 status="failed",
-                records_processed=stats.companies_processed + stats.filings_processed + stats.facts_processed,
-                records_inserted=stats.companies_inserted + stats.filings_inserted + stats.facts_inserted,
+                records_processed=stats.companies_processed
+                + stats.filings_processed
+                + stats.facts_processed,
+                records_inserted=stats.companies_inserted
+                + stats.filings_inserted
+                + stats.facts_inserted,
                 records_updated=stats.companies_updated + stats.listings_updated,
                 records_skipped=stats.filings_skipped + stats.facts_skipped,
                 errors={"error": str(e), "type": type(e).__name__},
                 finished_at=datetime.now(UTC),
                 duration_seconds=duration,
             )
-            stats.errors.append({"import_run_id": run_id, "status": "failed", "error": str(e)})
+            stats.errors.append(
+                {"import_run_id": run_id, "status": "failed", "error": str(e)}
+            )
             raise
 
         finally:
@@ -675,9 +759,9 @@ def create_sec_importer(
 ) -> tuple[SECImporter, SECClient]:
     """Factory function to create SEC importer with dependencies."""
     import os
+
     url = database_url or os.environ.get(
-        "DATABASE_URL",
-        "postgresql://financial:test@localhost:5432/financial_database"
+        "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
     conn = psycopg.connect(url)
     client = SECClient(user_agent=user_agent, raw_dir=raw_dir)

@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ParsedCompany:
     """Normalized company ready for database insertion."""
+
     cik: str
     legal_name: str
     country: str | None = "USA"
@@ -41,6 +42,7 @@ class ParsedCompany:
 @dataclass
 class ParsedListing:
     """Normalized listing ready for database insertion."""
+
     exchange_code: str
     exchange_name: str
     ticker: str
@@ -57,6 +59,7 @@ class ParsedListing:
 @dataclass
 class ParsedFiling:
     """Normalized filing ready for database insertion."""
+
     accession_number: str
     form: str
     filing_date: date
@@ -72,6 +75,7 @@ class ParsedFiling:
 @dataclass
 class ParsedFinancialFact:
     """Normalized financial fact ready for database insertion."""
+
     concept: str
     namespace: str
     value: float
@@ -142,20 +146,14 @@ class SECParser:
             if not self._is_financial_form(filing.form):
                 continue
 
-            # Skip filings without period_end (required by database schema)
-            if filing.period_end is None:
-                logger.warning(
-                    "Skipping filing without period_end",
-                    extra={"form": filing.form, "accession": filing.accession_number, "filing_date": filing.filing_date},
-                )
-                continue
-
+            # Allow filings without period_end (SEC may not provide period_of_report)
+            # period_end is now nullable in the database
             parsed = ParsedFiling(
                 accession_number=normalize_accession_number(filing.accession_number),
                 form=filing.form,
                 filing_date=filing.filing_date,
                 period_start=filing.period_start,
-                period_end=filing.period_end,
+                period_end=filing.period_end,  # Can be None
                 fiscal_year=filing.fiscal_year,
                 fiscal_period=filing.fiscal_period or "FY",
                 filing_url=filing.filing_url,
@@ -196,14 +194,20 @@ class SECParser:
                     if fiscal_year is None:
                         logger.warning(
                             "Skipping fact with no fiscal year",
-                            extra={"cik": cik, "concept": concept_name, "namespace": namespace},
+                            extra={
+                                "cik": cik,
+                                "concept": concept_name,
+                                "namespace": namespace,
+                            },
                         )
                         continue
 
                     # Build source_id from accession + concept + period
                     source_parts = []
                     if value.accession_number:
-                        source_parts.append(normalize_accession_number(value.accession_number))
+                        source_parts.append(
+                            normalize_accession_number(value.accession_number)
+                        )
                     source_parts.append(f"{namespace}:{concept_name}")
                     if value.period_start:
                         source_parts.append(value.period_start.isoformat())
@@ -213,7 +217,9 @@ class SECParser:
                     # Look up filing_id from accession
                     filing_id = None
                     if value.accession_number and filing_id_map:
-                        filing_id = filing_id_map.get(normalize_accession_number(value.accession_number))
+                        filing_id = filing_id_map.get(
+                            normalize_accession_number(value.accession_number)
+                        )
 
                     # Convert value to float, skip non-numeric
                     try:
@@ -221,7 +227,12 @@ class SECParser:
                     except (ValueError, TypeError):
                         logger.warning(
                             "Skipping non-numeric fact value",
-                            extra={"cik": cik, "concept": concept_name, "namespace": namespace, "value": value.value},
+                            extra={
+                                "cik": cik,
+                                "concept": concept_name,
+                                "namespace": namespace,
+                                "value": value.value,
+                            },
                         )
                         continue
 
@@ -230,7 +241,9 @@ class SECParser:
                         namespace=namespace,
                         value=numeric_value,
                         unit=fact.unit or value.metadata.get("unit", "USD"),
-                        period_start=value.period_start if not value.is_instant else None,
+                        period_start=value.period_start
+                        if not value.is_instant
+                        else None,
                         period_end=value.period_end,
                         fiscal_year=fiscal_year,
                         fiscal_period=fiscal_period,
@@ -246,7 +259,11 @@ class SECParser:
 
         logger.info(
             "Parsed company facts",
-            extra={"cik": cik, "fact_count": len(facts), "namespace_count": len(company_facts.facts)},
+            extra={
+                "cik": cik,
+                "fact_count": len(facts),
+                "namespace_count": len(company_facts.facts),
+            },
         )
         return facts
 
@@ -259,12 +276,18 @@ class SECParser:
     def _is_financial_form(self, form: str) -> bool:
         """Check if form is a financial reporting form."""
         financial_forms = {
-            "10-K", "10-K/A",
-            "10-Q", "10-Q/A",
-            "20-F", "20-F/A",
-            "40-F", "40-F/A",
-            "6-K", "6-K/A",
-            "8-K", "8-K/A",  # Sometimes contains financial info
+            "10-K",
+            "10-K/A",
+            "10-Q",
+            "10-Q/A",
+            "20-F",
+            "20-F/A",
+            "40-F",
+            "40-F/A",
+            "6-K",
+            "6-K/A",
+            "8-K",
+            "8-K/A",  # Sometimes contains financial info
         }
         return form in financial_forms
 

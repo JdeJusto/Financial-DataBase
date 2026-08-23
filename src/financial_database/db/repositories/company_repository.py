@@ -4,30 +4,41 @@ Handles all database operations for the companies table.
 """
 
 
-
 class CompanyRepository:
     """Repository for companies table."""
 
     def __init__(self, conn):
         self.conn = conn
 
-    def create(self, legal_name: str, country: str | None = None,
-               sector: str | None = None, industry: str | None = None,
-               currency: str | None = None, website: str | None = None) -> dict:
+    def create(
+        self,
+        legal_name: str,
+        country: str | None = None,
+        sector: str | None = None,
+        industry: str | None = None,
+        currency: str | None = None,
+        website: str | None = None,
+    ) -> dict:
         """Insert a new company."""
         with self.conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO companies (legal_name, country, sector, industry, currency, website)
                    VALUES (%s, %s, %s, %s, %s, %s)
                    RETURNING id, legal_name, country, sector, industry, currency, website, created_at, updated_at""",
-                (legal_name, country, sector, industry, currency, website)
+                (legal_name, country, sector, industry, currency, website),
             )
             return cur.fetchone()
 
-    def update(self, company_id: str, legal_name: str | None = None,
-               country: str | None = None, sector: str | None = None,
-               industry: str | None = None, currency: str | None = None,
-               website: str | None = None) -> dict | None:
+    def update(
+        self,
+        company_id: str,
+        legal_name: str | None = None,
+        country: str | None = None,
+        sector: str | None = None,
+        industry: str | None = None,
+        currency: str | None = None,
+        website: str | None = None,
+    ) -> dict | None:
         """Update an existing company."""
         set_parts = []
         params = []
@@ -56,7 +67,7 @@ class CompanyRepository:
         with self.conn.cursor() as cur:
             cur.execute(
                 f"UPDATE companies SET {', '.join(set_parts)} WHERE id = %s RETURNING id, legal_name, country, sector, industry, currency, website, created_at, updated_at",
-                params
+                params,
             )
             return cur.fetchone()
 
@@ -65,7 +76,7 @@ class CompanyRepository:
         with self.conn.cursor() as cur:
             cur.execute(
                 "SELECT id, legal_name, country, sector, industry, currency, website, created_at, updated_at FROM companies WHERE id = %s",
-                (company_id,)
+                (company_id,),
             )
             return cur.fetchone()
 
@@ -74,6 +85,6 @@ class CompanyRepository:
         with self.conn.cursor() as cur:
             cur.execute(
                 "SELECT id, legal_name, country, sector, industry, currency, website, created_at, updated_at FROM companies WHERE is_active = TRUE ORDER BY legal_name LIMIT %s OFFSET %s",
-                (limit, offset)
+                (limit, offset),
             )
             return cur.fetchall()

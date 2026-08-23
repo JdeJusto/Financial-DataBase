@@ -30,8 +30,7 @@ APPLIED_TABLE = "schema_migrations"
 def get_connection():
     """Get PostgreSQL connection from environment variables."""
     database_url = os.environ.get(
-        "DATABASE_URL",
-        "postgresql://financial:test@localhost:5432/financial_database"
+        "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
     return psycopg.connect(database_url, row_factory=psycopg.rows.dict_row)
 
@@ -86,14 +85,14 @@ def run_pending() -> dict:
                 "success": True,
                 "applied_count": 0,
                 "total_applied": len(applied),
-                "message": "No pending migrations"
+                "message": "No pending migrations",
             }
 
         applied_count = 0
 
         for name, migration_file in pending:
             try:
-                with open(migration_file, 'r') as f:
+                with open(migration_file, "r") as f:
                     sql = f.read()
 
                 with conn.cursor() as cur:
@@ -102,7 +101,7 @@ def run_pending() -> dict:
                 with conn.cursor() as cur:
                     cur.execute(
                         f"INSERT INTO {APPLIED_TABLE} (migration_name) VALUES (%s)",
-                        (name,)
+                        (name,),
                     )
 
                 conn.commit()
@@ -117,7 +116,7 @@ def run_pending() -> dict:
             "success": True,
             "applied_count": applied_count,
             "total_applied": len(applied) + applied_count,
-            "message": f"Applied {applied_count} pending migrations"
+            "message": f"Applied {applied_count} pending migrations",
         }
 
     finally:
@@ -139,7 +138,7 @@ def status() -> dict:
             "applied": len(applied),
             "pending": len(pending),
             "applied_names": sorted(applied),
-            "pending_names": sorted(pending)
+            "pending_names": sorted(pending),
         }
     finally:
         conn.close()

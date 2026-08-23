@@ -8,6 +8,7 @@ from typing import Any
 @dataclass
 class SECCompany:
     """SEC company from company tickers exchange reference."""
+
     cik: str
     name: str
     ticker: str | None = None
@@ -26,6 +27,7 @@ class SECCompany:
 @dataclass
 class SECFiling:
     """SEC filing metadata from submissions."""
+
     accession_number: str
     form: str
     filing_date: date
@@ -48,6 +50,7 @@ class SECFiling:
 @dataclass
 class SECSubmissions:
     """SEC submissions response for a company."""
+
     cik: str
     entity_name: str
     filings: list[SECFiling] = field(default_factory=list)
@@ -61,6 +64,7 @@ class SECSubmissions:
 @dataclass
 class SECCompanyFact:
     """Individual fact from CompanyFacts XBRL data."""
+
     concept: str
     namespace: str
     label: str | None = None
@@ -72,6 +76,7 @@ class SECCompanyFact:
 @dataclass
 class SECCompanyFactValue:
     """A single fact value with period and filing context."""
+
     value: int | float
     period_start: date | None
     period_end: date
@@ -88,6 +93,7 @@ class SECCompanyFactValue:
 @dataclass
 class SECCompanyFacts:
     """SEC CompanyFacts XBRL response."""
+
     cik: str
     entity_name: str
     facts: dict[str, dict[str, SECCompanyFact]] = field(default_factory=dict)
@@ -101,6 +107,7 @@ class SECCompanyFacts:
 @dataclass
 class ExchangeMapping:
     """Mapping from SEC exchange to internal exchange."""
+
     sec_exchange: str
     internal_code: str
     internal_name: str

@@ -73,8 +73,7 @@ def sec():
 def _get_db_connection(database_url: str | None) -> psycopg.Connection:
     """Get database connection from URL or environment."""
     url = database_url or os.environ.get(
-        "DATABASE_URL",
-        "postgresql://financial:test@localhost:5432/financial_database"
+        "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
     return psycopg.connect(url, row_factory=psycopg.rows.dict_row)
 
@@ -108,7 +107,7 @@ def seed_provider(database_url):
                    VALUES (%s, %s, %s, %s, %s, %s)
                    ON CONFLICT (name) DO NOTHING
                    RETURNING id""",
-                ("SEC EDGAR", "sec", "SEC EDGAR", "https://www.sec.gov", 10.0, True)
+                ("SEC EDGAR", "sec", "SEC EDGAR", "https://www.sec.gov", 10.0, True),
             )
             row = cur.fetchone()
             if row:
@@ -169,7 +168,9 @@ def sec_universe(database_url, dry_run):
             companies = asyncio.run(client.get_company_tickers())
             print(f"   Would import {len(companies)} companies")
             for c in companies[:5]:
-                print(f"   - {c.cik}: {c.name} ({c.ticker or 'no ticker'}) on {c.exchange or 'no exchange'}")
+                print(
+                    f"   - {c.cik}: {c.name} ({c.ticker or 'no ticker'}) on {c.exchange or 'no exchange'}"
+                )
             if len(companies) > 5:
                 print(f"   ... and {len(companies) - 5} more")
         finally:
@@ -185,7 +186,7 @@ def sec_universe(database_url, dry_run):
         asyncio.run(importer.seed_exchanges())
 
         print("📥 Importing SEC company universe...")
-        stats = asyncio.run(importer.import_company_universe())
+        stats = asyncio.run(importer.run_import_pipeline("sec_universe"))
 
         print("✅ Import complete:")
         print(f"   Companies processed: {stats.companies_processed}")
@@ -219,7 +220,9 @@ def sec_submissions(cik, database_url, dry_run):
             submissions = asyncio.run(client.get_submissions(cik))
             print(f"   Found {len(submissions.filings)} filings")
             for f in submissions.filings[:10]:
-                print(f"   - {f.form} {f.accession_number} filed {f.filing_date} period {f.period_end}")
+                print(
+                    f"   - {f.form} {f.accession_number} filed {f.filing_date} period {f.period_end}"
+                )
             if len(submissions.filings) > 10:
                 print(f"   ... and {len(submissions.filings) - 10} more")
         finally:
@@ -232,7 +235,7 @@ def sec_submissions(cik, database_url, dry_run):
         importer = SECImporter(conn, client)
 
         print(f"📥 Importing submissions for CIK {cik}...")
-        stats = asyncio.run(importer.import_submissions(cik))
+        stats = asyncio.run(importer.run_import_pipeline("sec_submissions", cik=cik))
 
         print("✅ Import complete:")
         print(f"   Filings processed: {stats.filings_processed}")
@@ -261,14 +264,18 @@ def sec_companyfacts(cik, database_url, dry_run):
         client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
         try:
             facts = asyncio.run(client.get_company_facts(cik))
-            total_values = sum(len(fact.values) for ns in facts.facts.values() for fact in ns.values())
+            total_values = sum(
+                len(fact.values) for ns in facts.facts.values() for fact in ns.values()
+            )
             print(f"   Namespaces: {len(facts.facts)}")
             print(f"   Concepts: {sum(len(ns) for ns in facts.facts.values())}")
             print(f"   Total fact values: {total_values}")
             # Show sample
             for ns, concepts in list(facts.facts.items())[:3]:
                 for concept_name, fact in list(concepts.items())[:3]:
-                    print(f"   - {ns}:{concept_name} ({fact.unit}) - {len(fact.values)} values")
+                    print(
+                        f"   - {ns}:{concept_name} ({fact.unit}) - {len(fact.values)} values"
+                    )
         finally:
             asyncio.run(client.close())
         return
@@ -279,7 +286,7 @@ def sec_companyfacts(cik, database_url, dry_run):
         importer = SECImporter(conn, client)
 
         print(f"📥 Importing CompanyFacts for CIK {cik}...")
-        stats = asyncio.run(importer.import_company_facts(cik))
+        stats = asyncio.run(importer.run_import_pipeline("sec_companyfacts", cik=cik))
 
         print("✅ Import complete:")
         print(f"   Facts processed: {stats.facts_processed}")
@@ -312,9 +319,13 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
         try:
             # Just verify company exists in universe
             companies = asyncio.run(client.get_company_tickers())
-            target = next((c for c in companies if c.normalized_cik == cik.zfill(10)), None)
+            target = next(
+                (c for c in companies if c.normalized_cik == cik.zfill(10)), None
+            )
             if target:
-                print(f"   Found in universe: {target.name} ({target.ticker}) on {target.exchange}")
+                print(
+                    f"   Found in universe: {target.name} ({target.ticker}) on {target.exchange}"
+                )
             else:
                 print(f"   ⚠️  CIK {cik} not found in SEC universe")
         finally:
@@ -327,18 +338,35 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
         importer = SECImporter(conn, client)
 
         print(f"🔄 Full sync for CIK {cik}...")
-        stats = asyncio.run(importer.sync_company(
-            cik,
-            include_facts=not no_facts,
-            include_filings=not no_filings,
-        ))
+        pipeline = "sec_sync"
+        if no_facts and no_filings:
+            pipeline = "sec_universe"
+        elif no_facts:
+            pipeline = "sec_submissions"
+        elif no_filings:
+            pipeline = "sec_companyfacts"
+
+        stats = asyncio.run(
+            importer.run_import_pipeline(
+                pipeline,
+                cik=cik,
+            )
+        )
 
         print("✅ Sync complete:")
-        print(f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated")
+        print(
+            f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated"
+        )
         print(f"   Identifiers: {stats.identifiers_inserted} inserted")
-        print(f"   Listings: {stats.listings_inserted} inserted, {stats.listings_updated} updated")
-        print(f"   Filings: {stats.filings_inserted} inserted, {stats.filings_skipped} skipped")
-        print(f"   Facts: {stats.facts_inserted} inserted, {stats.facts_skipped} skipped, {stats.facts_validation_errors} validation errors")
+        print(
+            f"   Listings: {stats.listings_inserted} inserted, {stats.listings_updated} updated"
+        )
+        print(
+            f"   Filings: {stats.filings_inserted} inserted, {stats.filings_skipped} skipped"
+        )
+        print(
+            f"   Facts: {stats.facts_inserted} inserted, {stats.facts_skipped} skipped, {stats.facts_validation_errors} validation errors"
+        )
         if stats.errors:
             print(f"   Errors: {len(stats.errors)}")
     finally:
@@ -348,8 +376,12 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
 
 @sec.command("sync-all")
 @click.option("--database-url", default=None, help="PostgreSQL connection URL")
-@click.option("--limit", type=int, default=None, help="Limit number of companies to process")
-@click.option("--skip-universe", is_flag=True, help="Skip universe import (assume already done)")
+@click.option(
+    "--limit", type=int, default=None, help="Limit number of companies to process"
+)
+@click.option(
+    "--skip-universe", is_flag=True, help="Skip universe import (assume already done)"
+)
 @click.option("--confirm", is_flag=True, help="Confirm full universe sync (required)")
 def sec_sync_all(database_url, limit, skip_universe, confirm):
     """Full universe sync - processes ALL SEC companies.
@@ -380,7 +412,9 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
 
             print("📥 Importing SEC company universe...")
             stats = asyncio.run(importer.import_company_universe())
-            print(f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated")
+            print(
+                f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated"
+            )
 
         # Get all companies from database
         with conn.cursor() as cur:

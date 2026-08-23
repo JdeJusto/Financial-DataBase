@@ -16,7 +16,6 @@ def get_connection():
     Returns a connection with dict_row factory for easy row-to-dict conversion.
     """
     database_url = os.environ.get(
-        "DATABASE_URL",
-        "postgresql://financial:test@localhost:5432/financial_database"
+        "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
     return psycopg.connect(database_url, row_factory=psycopg.rows.dict_row)

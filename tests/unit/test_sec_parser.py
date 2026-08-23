@@ -227,10 +227,14 @@ class TestSECParser:
 
         parsed_facts = parser.parse_company_facts(facts, filing_id_map)
 
-        assert len(parsed_facts) == 2  # 2 Assets (1 duration + 1 instant), non-numeric DEI skipped
+        assert (
+            len(parsed_facts) == 2
+        )  # 2 Assets (1 duration + 1 instant), non-numeric DEI skipped
 
         # Check first Assets fact (duration)
-        assets_duration = [f for f in parsed_facts if f.concept == "Assets" and not f.is_instant][0]
+        assets_duration = next(
+            f for f in parsed_facts if f.concept == "Assets" and not f.is_instant
+        )
         assert assets_duration.namespace == "us-gaap"
         assert assets_duration.value == 352755000000
         assert assets_duration.unit == "USD"
@@ -242,7 +246,9 @@ class TestSECParser:
         assert assets_duration.is_instant is False
 
         # Check instant fact
-        cash_instant = [f for f in parsed_facts if f.is_instant and f.concept == "Assets"][0]
+        cash_instant = next(
+            f for f in parsed_facts if f.is_instant and f.concept == "Assets"
+        )
         assert cash_instant.period_start is None
         assert cash_instant.period_end == date(2023, 9, 30)
         assert cash_instant.is_instant is True
@@ -251,7 +257,9 @@ class TestSECParser:
         assert "us-gaap:Assets" in assets_duration.source_id
         assert "000032019323000106" in assets_duration.source_id
 
-    def test_parse_company_facts_missing_fiscal_year_infers_from_period_end(self, parser):
+    def test_parse_company_facts_missing_fiscal_year_infers_from_period_end(
+        self, parser
+    ):
         facts = SECCompanyFacts(
             cik="0000320193",
             entity_name="Apple Inc.",
@@ -283,7 +291,9 @@ class TestSECParser:
         assert len(parsed) == 1
         assert parsed[0].fiscal_year == 2023  # Inferred from period_end
 
-    def test_parse_company_facts_skips_no_fiscal_year_no_period_end(self, parser, caplog):
+    def test_parse_company_facts_skips_no_fiscal_year_no_period_end(
+        self, parser, caplog
+    ):
         facts = SECCompanyFacts(
             cik="0000320193",
             entity_name="Apple Inc.",
@@ -310,7 +320,9 @@ class TestSECParser:
         parsed = parser.parse_company_facts(facts, {})
 
         assert len(parsed) == 0
-        assert any("Skipping fact with no fiscal year" in r.message for r in caplog.records)
+        assert any(
+            "Skipping fact with no fiscal year" in r.message for r in caplog.records
+        )
 
 
 class TestValidateFinancialFact:

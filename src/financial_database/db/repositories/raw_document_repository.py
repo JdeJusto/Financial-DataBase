@@ -4,18 +4,22 @@ Metadata references to preserved raw data files.
 """
 
 
-
 class RawDocumentRepository:
     """Repository for raw_documents table."""
 
     def __init__(self, conn):
         self.conn = conn
 
-    def create(self, provider_id: str, source_identifier: str,
-               storage_path: str, checksum: str | None = None,
-               content_type: str | None = None,
-               metadata: dict | None = None,
-               is_processed: bool = False) -> dict:
+    def create(
+        self,
+        provider_id: str,
+        source_identifier: str,
+        storage_path: str,
+        checksum: str | None = None,
+        content_type: str | None = None,
+        metadata: dict | None = None,
+        is_processed: bool = False,
+    ) -> dict:
         """Create a new raw document record."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -25,8 +29,15 @@ class RawDocumentRepository:
                    ON CONFLICT (provider_id, source_identifier) DO NOTHING
                    RETURNING id, provider_id, source_identifier, storage_path, checksum,
                    content_type, metadata, is_processed, retrieved_at, created_at, updated_at""",
-                (provider_id, source_identifier, storage_path, checksum,
-                 content_type, metadata or {}, is_processed)
+                (
+                    provider_id,
+                    source_identifier,
+                    storage_path,
+                    checksum,
+                    content_type,
+                    metadata or {},
+                    is_processed,
+                ),
             )
             return cur.fetchone()
 
@@ -37,7 +48,7 @@ class RawDocumentRepository:
                 "SELECT id, provider_id, source_identifier, storage_path, checksum, "
                 "content_type, metadata, is_processed, retrieved_at, created_at, updated_at "
                 "FROM raw_documents WHERE provider_id = %s ORDER BY retrieved_at DESC",
-                (provider_id,)
+                (provider_id,),
             )
             return [dict(row) for row in cur.fetchall()]
 
@@ -49,7 +60,7 @@ class RawDocumentRepository:
                     "SELECT id, provider_id, source_identifier, storage_path, checksum, "
                     "content_type, metadata, is_processed, retrieved_at, created_at, updated_at "
                     "FROM raw_documents WHERE is_processed = FALSE AND provider_id = %s ORDER BY retrieved_at",
-                    (provider_id,)
+                    (provider_id,),
                 )
             else:
                 cur.execute(
@@ -64,5 +75,5 @@ class RawDocumentRepository:
         with self.conn.cursor() as cur:
             cur.execute(
                 "UPDATE raw_documents SET is_processed = TRUE, updated_at = NOW() WHERE id = %s",
-                (doc_id,)
+                (doc_id,),
             )

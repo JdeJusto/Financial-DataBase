@@ -13,11 +13,11 @@ class TestMigrationDiscovery:
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
         assert migrations_dir.exists()
 
-    def test_has_15_migrations(self):
-        """Test that we have exactly 15 migrations (including SEC provider seed)."""
+    def test_has_18_migrations(self):
+        """Test that we have exactly 18 migrations."""
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
         sql_files = list(migrations_dir.glob("*.sql"))
-        assert len(sql_files) == 15
+        assert len(sql_files) == 18
 
     def test_migrations_are_numbered(self):
         """Test that all migrations are properly numbered."""
@@ -50,6 +50,9 @@ class TestMigrationDiscovery:
             "0013_import_runs",
             "0014_indexes",
             "0015_sec_provider_seed",
+            "0016_fix_duplicate_listings",
+            "0017_fix_filings_nullable_period",
+            "0018_add_namespace_frame_to_financial_facts",
         ]
         assert names == expected
 
@@ -60,6 +63,7 @@ class TestMigrationRunner:
     def test_find_project_root(self):
         """Test that find_project_root works."""
         from financial_database.db.migrations.runner import find_project_root
+
         root = find_project_root()
         # The project root can be either "financial-database" or "Financial-DataBase" depending on case
         assert root.name.lower() == "financial-database"
@@ -68,8 +72,9 @@ class TestMigrationRunner:
     def test_get_migration_files(self):
         """Test getting migration files."""
         from financial_database.db.migrations.runner import get_migration_files
+
         files = get_migration_files()
-        assert len(files) == 15
+        assert len(files) == 18
         assert all(isinstance(f, tuple) and len(f) == 2 for f in files)
 
 

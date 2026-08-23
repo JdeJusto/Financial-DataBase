@@ -6,16 +6,28 @@ from sqlalchemy import text
 def test_dividends_table_structure(db_session):
     """Test that dividends table has correct structure."""
     # Check table exists
-    result = db_session.execute(text("""
+    result = db_session.execute(
+        text("""
         SELECT column_name, data_type, is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale
         FROM information_schema.columns
         WHERE table_name = 'dividends'
         ORDER BY ordinal_position
-    """))
+    """)
+    )
     columns = result.fetchall()
 
     # Convert to dict for easier checking
-    column_dict = {row[0]: {"type": row[1], "nullable": row[2], "default": row[3], "character_maximum_length": row[4] if len(row) > 4 else None, "precision": str(row[5]) if row[5] is not None else None, "scale": str(row[6]) if row[6] is not None else None} for row in columns}
+    column_dict = {
+        row[0]: {
+            "type": row[1],
+            "nullable": row[2],
+            "default": row[3],
+            "character_maximum_length": row[4] if len(row) > 4 else None,
+            "precision": str(row[5]) if row[5] is not None else None,
+            "scale": str(row[6]) if row[6] is not None else None,
+        }
+        for row in columns
+    }
 
     # Check required columns exist
     assert "id" in column_dict
@@ -73,47 +85,63 @@ def test_dividends_table_structure(db_session):
 def test_dividends_table_constraints(db_session):
     """Test that dividends table has correct constraints."""
     # Check primary key
-    result = db_session.execute(text("""
+    result = db_session.execute(
+        text("""
         SELECT constraint_name
         FROM information_schema.table_constraints
         WHERE table_name = 'dividends' AND constraint_type = 'PRIMARY KEY'
-    """))
+    """)
+    )
     pk_constraint = result.fetchone()
     assert pk_constraint is not None
     assert pk_constraint[0] == "dividends_pkey"
 
     # Check foreign keys
-    result = db_session.execute(text("""
+    result = db_session.execute(
+        text("""
         SELECT constraint_name
         FROM information_schema.table_constraints
         WHERE table_name = 'dividends' AND constraint_type = 'FOREIGN KEY'
-    """))
+    """)
+    )
     fk_constraints = result.fetchall()
     assert len(fk_constraints) >= 2  # listing_id and provider_id FKs
 
     # Check unique constraint
-    result = db_session.execute(text("""
+    result = db_session.execute(
+        text("""
         SELECT constraint_name
         FROM information_schema.table_constraints
         WHERE table_name = 'dividends' AND constraint_type = 'UNIQUE'
-    """))
+    """)
+    )
     unique_constraints = result.fetchall()
     assert len(unique_constraints) >= 1
     constraint_names = [c[0] for c in unique_constraints]
     # Should have unique on listing_id, ex_dividend_date, provider_id, source_id
-    assert any("listing_id" in c and "ex_dividend_date" in c and "provider_id" in c and "source_id" in c for c in constraint_names)
+    assert any(
+        "listing_id" in c
+        and "ex_dividend_date" in c
+        and "provider_id" in c
+        and "source_id" in c
+        for c in constraint_names
+    )
 
     # Check check constraints
     # Check using pg_constraint for better compatibility
-    result = db_session.execute(text("""
+    result = db_session.execute(
+        text("""
         SELECT conname
         FROM pg_constraint
         WHERE conrelid = 'dividends'::regclass
           AND contype = 'c'
           AND conname IN ('chk_dividends_amount', 'chk_dividends_dates')
-    """))
+    """)
+    )
     check_constraints = result.fetchall()
-    assert len(check_constraints) == 2  # We expect exactly two check constraints: amount and dates
+    assert (
+        len(check_constraints) == 2
+    )  # We expect exactly two check constraints: amount and dates
 
 
 def test_insert_dividend(db_session):
@@ -124,10 +152,9 @@ def test_insert_dividend(db_session):
         VALUES (:name, :type)
         RETURNING id
     """
-    provider_result = db_session.execute(text(provider_insert), {
-        "name": "Test Provider",
-        "type": "price"
-    })
+    provider_result = db_session.execute(
+        text(provider_insert), {"name": "Test Provider", "type": "price"}
+    )
     provider_id = provider_result.fetchone()[0]
 
     # First insert a company, exchange, and listing
@@ -136,9 +163,9 @@ def test_insert_dividend(db_session):
         VALUES (:legal_name)
         RETURNING id
     """
-    company_result = db_session.execute(text(company_insert), {
-        "legal_name": "Test Company"
-    })
+    company_result = db_session.execute(
+        text(company_insert), {"legal_name": "Test Company"}
+    )
     company_id = company_result.fetchone()[0]
 
     exchange_insert = """
@@ -146,10 +173,9 @@ def test_insert_dividend(db_session):
         VALUES (:code, :name)
         RETURNING id
     """
-    exchange_result = db_session.execute(text(exchange_insert), {
-        "code": "TEST",
-        "name": "Test Exchange"
-    })
+    exchange_result = db_session.execute(
+        text(exchange_insert), {"code": "TEST", "name": "Test Exchange"}
+    )
     exchange_id = exchange_result.fetchone()[0]
 
     listing_insert = """
@@ -157,11 +183,10 @@ def test_insert_dividend(db_session):
         VALUES (:company_id, :exchange_id, :ticker)
         RETURNING id
     """
-    listing_result = db_session.execute(text(listing_insert), {
-        "company_id": company_id,
-        "exchange_id": exchange_id,
-        "ticker": "TST"
-    })
+    listing_result = db_session.execute(
+        text(listing_insert),
+        {"company_id": company_id, "exchange_id": exchange_id, "ticker": "TST"},
+    )
     listing_id = listing_result.fetchone()[0]
 
     # Insert dividend
@@ -171,15 +196,18 @@ def test_insert_dividend(db_session):
         RETURNING id
     """
 
-    result = db_session.execute(text(dividend_insert), {
-        "listing_id": listing_id,
-        "provider_id": provider_id,
-        "ex_dividend_date": "2023-01-15",
-        "record_date": "2023-01-20",
-        "payment_date": "2023-02-01",
-        "amount": 2.50,
-        "currency": "USD"
-    })
+    result = db_session.execute(
+        text(dividend_insert),
+        {
+            "listing_id": listing_id,
+            "provider_id": provider_id,
+            "ex_dividend_date": "2023-01-15",
+            "record_date": "2023-01-20",
+            "payment_date": "2023-02-01",
+            "amount": 2.50,
+            "currency": "USD",
+        },
+    )
 
     dividend_id = result.fetchone()[0]
     db_session.commit()
@@ -190,9 +218,7 @@ def test_insert_dividend(db_session):
         FROM dividends WHERE id = :dividend_id
     """
 
-    result = db_session.execute(text(select_sql), {
-        "dividend_id": dividend_id
-    })
+    result = db_session.execute(text(select_sql), {"dividend_id": dividend_id})
     dividend = result.fetchone()
 
     assert dividend is not None
