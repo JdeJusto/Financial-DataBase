@@ -92,6 +92,45 @@ financial-db sec sync 0000320193 --dry-run
 **Targeted imports** (e.g., `--cik 0000320193`) are the primary workflow.
 Full-universe sync (`financial-db sec sync-all --confirm`) is available but involves thousands of HTTP requests.
 
+### Historical Bulk Ingestion (Phase 3.5/3.6)
+
+For loading the complete SEC EDGAR universe from bulk datasets:
+
+```bash
+# Dry run to validate setup
+financial-db sec bulk-ingest --dry-run
+
+# Full bulk ingestion (downloads, extracts, processes all companies)
+financial-db sec bulk-ingest --download --confirm
+
+# Process with limit for testing
+financial-db sec bulk-ingest --download --limit 100 --confirm
+
+# Resume from checkpoint after interruption
+financial-db sec bulk-ingest --checkpoint-file ./data/checkpoints/sec_bulk/companyfacts_checkpoint.json --confirm
+
+# Use pre-downloaded/extracted files
+financial-db sec bulk-ingest --data-dir ./data/raw/sec/bulk_extracted --confirm
+```
+
+**Bulk ingestion options:**
+| Option | Description |
+|--------|-------------|
+| `--download` | Download latest bulk files from SEC |
+| `--data-dir` | Directory with extracted bulk files |
+| `--checkpoint-file` | Checkpoint file for resumability |
+| `--limit N` | Process only first N companies |
+| `--dry-run` | Validate without writing |
+| `--verbose` | Detailed logging |
+| `--confirm` | Required for full runs |
+
+**Features:**
+- **Memory efficient**: Streaming JSON parser (ijson) for large files
+- **Checkpoint/resume**: Atomic checkpoints saved after each company
+- **Idempotent**: Re-running produces zero duplicates
+- **Full history**: No date filtering - ingests ALL historical data from first filing
+- **~4-8 hours** for complete SEC universe (~20,000 companies)
+
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md)

@@ -1,0 +1,78 @@
+{
+  "cik": "0000320193",
+  "entityName": "Apple Inc.",
+  "facts": {
+    "us-gaap": {
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "USD": [
+            {
+              "start": "2022-09-25",
+              "end": "2023-09-30",
+              "val": 352755000000,
+              "accn": "0000320193-23-000106",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-11-03",
+              "frame": "CY2023"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+{
+  "cik": "0000789019",
+  "entityName": "Microsoft Corporation",
+  "facts": {
+    "us-gaap": {
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "USD": [
+            {
+              "start": "2022-07-01",
+              "end": "2023-06-30",
+              "val": 411976000000,
+              "accn": "0000789019-23-000006",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2023-07-27",
+              "frame": "CY2023"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+{
+  "cik": "0001018724",
+  "entityName": "Amazon.com Inc.",
+  "facts": {
+    "us-gaap": {
+      "Assets": {
+        "label": "Assets",
+        "units": {
+          "USD": [
+            {
+              "start": "2022-01-01",
+              "end": "2023-12-31",
+              "val": 527854000000,
+              "accn": "0001018724-24-000010",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-02-01",
+              "frame": "CY2023"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

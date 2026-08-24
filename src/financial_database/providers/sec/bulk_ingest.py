@@ -1,5 +1,7 @@
 """SEC EDGAR bulk ingestion module for processing bulk data files."""
 
+import hashlib
+import json
 import logging
 import uuid
 import zipfile
@@ -95,6 +97,9 @@ class BulkImportCheckpoint:
     """Checkpoint for resuming bulk import."""
 
     dataset: str  # "companyfacts" or "submissions"
+    provider: str = "SEC EDGAR"
+    source_file: str = ""
+    source_file_checksum: str = ""
     cik: str | None = None
     last_processed_cik: str | None = None
     companies_processed: int = 0
@@ -105,6 +110,9 @@ class BulkImportCheckpoint:
     def to_dict(self) -> dict[str, Any]:
         return {
             "dataset": self.dataset,
+            "provider": self.provider,
+            "source_file": self.source_file,
+            "source_file_checksum": self.source_file_checksum,
             "cik": self.cik,
             "last_processed_cik": self.last_processed_cik,
             "companies_processed": self.companies_processed,
@@ -117,6 +125,9 @@ class BulkImportCheckpoint:
     def from_dict(cls, data: dict[str, Any]) -> "BulkImportCheckpoint":
         return cls(
             dataset=data["dataset"],
+            provider=data.get("provider", "SEC EDGAR"),
+            source_file=data.get("source_file", ""),
+            source_file_checksum=data.get("source_file_checksum", ""),
             cik=data.get("cik"),
             last_processed_cik=data.get("last_processed_cik"),
             companies_processed=data.get("companies_processed", 0),
@@ -166,6 +177,21 @@ class SECBulkIngester:
         self.checkpoint_dir = Path(checkpoint_dir or "./data/checkpoints/sec_bulk")
         self.batch_size = 100
 
+        # Repositories
+
+        self.companies = CompanyRepository(conn)
+        self.identifiers = CompanyIdentifierRepository(conn)
+        self.listings = CompanyListingRepository(conn)
+        self.exchanges = ExchangeRepository(conn)
+        self.filings = FilingRepository(conn)
+        self.facts = FinancialFactRepository(conn)
+        self.raw_docs = RawDocumentRepository(conn)
+        self.import_runs = ImportRunRepository(conn)
+
+        self._raw_dir = Path(client._raw_dir)
+        self.checkpoint_dir = Path(checkpoint_dir or "./data/checkpoints/sec_bulk")
+        self.batch_size = 100
+
         # Provider ID (cached)
         self._provider_id: uuid.UUID | None = None
 
@@ -173,8 +199,83 @@ class SECBulkIngester:
         self.SEC_PROVIDER_NAME = "SEC EDGAR"
         self.SEC_PROVIDER_TYPE = "sec"
 
+    def _compute_file_checksum(self, file_path: Path) -> str:
+        """Compute SHA256 checksum of a file."""
+        sha256 = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha256.update(chunk)
+        return sha256.hexdigest()
+
+    def _get_checkpoint_path(self, dataset: str) -> Path:
+        """Get checkpoint file path for a dataset."""
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        return self.checkpoint_dir / f"{dataset}_checkpoint.json"
+
+    def _save_checkpoint(self, checkpoint: BulkImportCheckpoint):
+        """Save checkpoint to disk atomically."""
+        checkpoint.updated_at = datetime.now(UTC)
+        checkpoint_path = self._get_checkpoint_path(checkpoint.dataset)
+        temp_path = checkpoint_path.with_suffix(".tmp")
+        try:
+            with open(temp_path, "w") as f:
+                json.dump(checkpoint.to_dict(), f, indent=2)
+            temp_path.replace(checkpoint_path)
+            logger.debug("Checkpoint saved", extra={"path": str(checkpoint_path)})
+        except OSError as e:
+            logger.error("Failed to save checkpoint", extra={"error": str(e)})
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+
+    def _load_checkpoint(self, dataset: str) -> BulkImportCheckpoint | None:
+        """Load checkpoint from disk."""
+        checkpoint_path = self._get_checkpoint_path(dataset)
+        if not checkpoint_path.exists():
+            return None
+        try:
+            with open(checkpoint_path) as f:
+                data = json.load(f)
+            logger.debug("Checkpoint loaded", extra={"path": str(checkpoint_path)})
+            return BulkImportCheckpoint.from_dict(data)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error("Failed to load checkpoint", extra={"error": str(e)})
+            return None
+
     def _get_provider_id(self):
         """Get or create SEC provider ID."""
+        if self._provider_id is not None:
+            return self._provider_id
+
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM data_providers WHERE name = %s",
+                (self.SEC_PROVIDER_NAME,),
+            )
+            row = cur.fetchone()
+            if row:
+                self._provider_id = uuid.UUID(str(row["id"]))
+                return self._provider_id
+
+            # Create provider
+            cur.execute(
+                """INSERT INTO data_providers (name, type, display_name, base_url, rate_limit_per_second, is_active)
+                   VALUES (%s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (
+                    self.SEC_PROVIDER_NAME,
+                    self.SEC_PROVIDER_TYPE,
+                    "SEC EDGAR",
+                    "https://www.sec.gov",
+                    10.0,
+                    True,
+                ),
+            )
+            self._provider_id = uuid.UUID(str(cur.fetchone()["id"]))
+            self.conn.commit()
+            logger.info(
+                "Created SEC provider", extra={"provider_id": str(self._provider_id)}
+            )
+            return self._provider_id
 
     async def download_bulk_files(self, force: bool = False) -> dict[str, Path]:
         """Download SEC bulk data files."""
@@ -241,21 +342,60 @@ class SECBulkIngester:
         return extracted_files
 
     async def ingest_companyfacts(
-        self, companyfacts_path: Path, checkpoint: BulkImportCheckpoint | None = None
+        self,
+        companyfacts_path: Path,
+        checkpoint: BulkImportCheckpoint | None = None,
+        limit: int | None = None,
     ) -> BulkImportStats:
-        """Ingest companyfacts.json using streaming JSON parsing."""
+        """Ingest companyfacts.json using streaming JSON parsing with checkpointing."""
         stats = BulkImportStats()
+
+        # Compute source file checksum
+        source_checksum = self._compute_file_checksum(companyfacts_path)
 
         # Load or create checkpoint
         if checkpoint is None:
-            checkpoint = BulkImportCheckpoint(dataset="companyfacts")
-            self._load_checkpoint("companyfacts", checkpoint)
+            checkpoint = BulkImportCheckpoint(
+                dataset="companyfacts",
+                source_file=str(companyfacts_path),
+                source_file_checksum=source_checksum,
+            )
+            loaded_checkpoint = self._load_checkpoint("companyfacts")
+            if loaded_checkpoint:
+                # Validate checkpoint matches current source file
+                if loaded_checkpoint.source_file_checksum != source_checksum:
+                    logger.warning(
+                        "Checkpoint source file checksum mismatch, starting fresh",
+                        extra={
+                            "checkpoint_checksum": loaded_checkpoint.source_file_checksum,
+                            "current_checksum": source_checksum,
+                        },
+                    )
+                else:
+                    checkpoint = loaded_checkpoint
+                    logger.info(
+                        "Resuming from checkpoint",
+                        extra={
+                            "last_processed_cik": checkpoint.last_processed_cik,
+                            "companies_processed": checkpoint.companies_processed,
+                        },
+                    )
+
+        # Update checkpoint with current file info
+        checkpoint.source_file = str(companyfacts_path)
+        checkpoint.source_file_checksum = source_checksum
+        checkpoint.provider = self.SEC_PROVIDER_NAME
 
         logger.info(
-            "Starting companyfacts ingestion", extra={"file": str(companyfacts_path)}
+            "Starting companyfacts ingestion",
+            extra={
+                "file": str(companyfacts_path),
+                "checksum": source_checksum[:16],
+                "resume_from_cik": checkpoint.last_processed_cik,
+            },
         )
 
-        # Parse JSON incrementally using ijson
+        # Parse JSON incrementally using ijson - collect all companies first
         async with aiofiles.open(companyfacts_path, "rb") as f:
             content = await f.read()
             parser = ijson.parse(content)
@@ -269,7 +409,6 @@ class SECBulkIngester:
                 if prefix == "cik" and event == "string":
                     # Start of a new company
                     if current_cik is not None and current_company_facts is not None:
-                        # Process the previous company
                         companies_to_process.append(
                             (current_cik, current_company_facts)
                         )
@@ -280,7 +419,6 @@ class SECBulkIngester:
                         "entityName": "",
                         "facts": {},
                     }
-                    logger.debug("Processing company", extra={"cik": value})
 
                 elif (
                     prefix == "entityName"
@@ -321,58 +459,148 @@ class SECBulkIngester:
 
             logger.info(f"Found {len(companies_to_process)} companies to process")
 
+        # Apply limit if specified
+        if limit is not None and limit > 0:
+            companies_to_process = companies_to_process[:limit]
+            logger.info(f"Limited to first {limit} companies")
+
+        provider_id = self._get_provider_id()
+
         # Process each company
+        processed_count = 0
         for cik, company_facts in companies_to_process:
-            if (
-                checkpoint
-                and checkpoint.last_processed_cik
-                and cik <= checkpoint.last_processed_cik
-            ):
+            # Skip if already processed (resume from checkpoint)
+            if checkpoint.last_processed_cik and cik <= checkpoint.last_processed_cik:
                 logger.debug("Skipping already processed CIK", extra={"cik": cik})
                 continue
 
-            try:
-                company_data = (
-                    companies_to_process.pop(0)
-                    if companies_to_process
-                    else {"facts": {}, "entityName": ""}
+            # Check if company exists in database (idempotency)
+            company_id = None
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """SELECT c.id FROM companies c
+                       JOIN company_identifiers ci ON c.id = ci.company_id
+                       WHERE ci.identifier_type = 'CIK' AND ci.identifier_value = %s
+                       AND ci.provider_id = (SELECT id FROM data_providers WHERE name = %s)""",
+                    (cik, self.SEC_PROVIDER_NAME),
                 )
+                row = cur.fetchone()
+                if row:
+                    company_id = str(row["id"])
+
+            if company_id is None:
+                # Create company record if it doesn't exist
+                from financial_database.db.repositories import CompanyRepository
+
+                company_repo = CompanyRepository(self.conn)
+                try:
+                    company = company_repo.create(
+                        legal_name=company_facts.get("entityName", ""),
+                    )
+                    if company:
+                        company_id = str(company["id"])
+                        stats.companies_inserted += 1
+                        # Add CIK identifier
+                        self.identifiers.create(
+                            company_id=company_id,
+                            identifier_type="CIK",
+                            identifier_value=cik,
+                            provider_id=provider_id,
+                        )
+                        stats.identifiers_inserted += 1
+                except (OSError, psycopg.Error) as e:
+                    logger.error(
+                        "Failed to create company", extra={"cik": cik, "error": str(e)}
+                    )
+                    stats.errors.append(
+                        {"cik": cik, "error": str(e), "stage": "company_creation"}
+                    )
+                    continue
+            else:
+                stats.companies_inserted += 0  # Already counted as processed
+                stats.companies_updated += 1
+
+            stats.companies_processed += 1
+            processed_count += 1
+
+            # Process this company's facts
+            try:
                 await self._process_company_facts(
                     cik,
                     {
-                        "facts": company_data[1]["facts"],
-                        "entityName": company_data[1]["entityName"],
+                        "facts": company_facts.get("facts", {}),
+                        "entityName": company_facts.get("entityName", ""),
                     },
                     {},
-                    self._get_provider_id(),
+                    provider_id,
                     stats,
                 )
+
+                # Update checkpoint after successful company processing
+                checkpoint.last_processed_cik = cik
+                checkpoint.companies_processed = stats.companies_processed
+                checkpoint.facts_processed = stats.facts_processed
+                self._save_checkpoint(checkpoint)
+
             except (ValueError, TypeError, KeyError, RuntimeError) as e:
                 logger.error(
                     "Failed to process company", extra={"cik": cik, "error": str(e)}
                 )
+                stats.errors.append(
+                    {"cik": cik, "error": str(e), "stage": "fact_processing"}
+                )
+                # Still advance checkpoint past failed company to avoid infinite retry
+                checkpoint.last_processed_cik = cik
+                checkpoint.companies_processed = stats.companies_processed
+                self._save_checkpoint(checkpoint)
+
+        # Final checkpoint save
+        self._save_checkpoint(checkpoint)
+
+        logger.info(
+            "Companyfacts ingestion complete",
+            extra={
+                "companies_processed": stats.companies_processed,
+                "facts_inserted": stats.facts_inserted,
+                "facts_skipped": stats.facts_skipped,
+                "errors": len(stats.errors),
+            },
+        )
 
         return stats
 
     async def ingest_submissions(
         self, submissions_dir: Path, checkpoint: BulkImportCheckpoint | None = None
     ) -> BulkImportStats:
-        """Ingest submissions JSON files."""
+        """Ingest submissions JSON files. Not yet implemented."""
+        stats = BulkImportStats()
+        logger.warning("ingest_submissions not yet implemented")
+        return stats
 
     async def ingest_company_tickers(self, tickers_path: Path) -> BulkImportStats:
-        """Import company tickers reference data."""
-
-    def _save_checkpoint(self, checkpoint: BulkImportCheckpoint):
-        """Save checkpoint to disk."""
-
-    def _load_checkpoint(self, dataset: str) -> BulkImportCheckpoint | None:
-        """Load checkpoint from disk."""
-
-    def _get_provider_id(self):
-        """Get or create SEC provider ID."""
+        """Import company tickers reference data. Not yet implemented."""
+        stats = BulkImportStats()
+        logger.warning("ingest_company_tickers not yet implemented")
+        return stats
 
     async def seed_exchanges(self) -> int:
         """Seed exchanges table with SEC exchange mappings."""
+        from financial_database.providers.sec import get_exchange_mappings
+
+        inserted = 0
+        for mapping in get_exchange_mappings():
+            result = self.exchanges.create(
+                code=mapping.internal_code,
+                name=mapping.internal_name,
+                country=mapping.country,
+                timezone=mapping.timezone,
+                currency=mapping.currency,
+            )
+            if result:
+                inserted += 1
+        self.conn.commit()
+        logger.info(f"Seeded {inserted} exchanges")
+        return inserted
 
     async def _process_company_facts(
         self,

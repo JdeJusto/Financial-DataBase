@@ -4,8 +4,11 @@ Provides commands for database migration and operations.
 """
 
 import asyncio
+import json
+import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import click
@@ -451,6 +454,173 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
         print(f"   Filings inserted: {total_stats.filings_inserted}")
         print(f"   Facts inserted: {total_stats.facts_inserted}")
         print(f"   Total errors: {len(total_stats.errors)}")
+    finally:
+        conn.close()
+        asyncio.run(client.close())
+
+
+@sec.command("bulk-ingest")
+@click.option("--database-url", default=None, help="PostgreSQL connection URL")
+@click.option(
+    "--data-dir", default=None, help="Directory containing extracted SEC bulk files"
+)
+@click.option(
+    "--download", is_flag=True, help="Download latest bulk files from SEC first"
+)
+@click.option(
+    "--checkpoint-file", default=None, help="Path to checkpoint file for resumability"
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Process only first N companies (for testing)",
+)
+@click.option("--dry-run", is_flag=True, help="Validate without writing to PostgreSQL")
+@click.option("--verbose", is_flag=True, help="Increase logging detail")
+@click.option(
+    "--confirm", is_flag=True, help="Confirm bulk ingestion (required for full run)"
+)
+def sec_bulk_ingest(
+    database_url, data_dir, download, checkpoint_file, limit, dry_run, verbose, confirm
+):
+    """Full historical SEC EDGAR bulk ingestion using companyfacts.zip and submissions.zip.
+
+    WARNING: This processes ALL SEC companies and can take many hours.
+    Use --confirm to acknowledge, or --limit for testing.
+    """
+
+    logger = logging.getLogger(__name__)
+
+    from financial_database.providers.sec.bulk_ingest import (
+        BulkImportCheckpoint,
+        create_bulk_ingester,
+    )
+
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+    # Check confirmation for full runs
+    if limit is None and not confirm and not dry_run:
+        raise click.ClickException(
+            "Bulk ingestion processes thousands of companies and takes hours. "
+            "Use --confirm to proceed, or --limit N for testing, or --dry-run to validate."
+        )
+
+    start_time = time.time()
+
+    if dry_run:
+        print("🔍 Dry run - validating bulk ingestion setup...")
+        print(
+            f"   Data directory: {data_dir or 'default (./data/raw/sec/bulk_downloads)'}"
+        )
+        print(
+            f"   Checkpoint file: {checkpoint_file or 'default (./data/checkpoints/sec_bulk/companyfacts_checkpoint.json)'}"
+        )
+        print(f"   Limit: {limit or 'none (all companies)'}")
+        print(f"   Download: {'yes' if download else 'no'}")
+        return
+
+    # Get database connection
+    url = database_url or os.environ.get(
+        "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
+    )
+    conn = psycopg.connect(url, row_factory=psycopg.rows.dict_row)
+
+    user_agent = _get_user_agent()
+    raw_dir = Path(data_dir) if data_dir else _get_raw_dir()
+
+    # Create bulk ingester
+    print("🔧 Initializing bulk ingester...")
+    ingester, client = asyncio.run(
+        create_bulk_ingester(
+            database_url=database_url,
+            user_agent=user_agent,
+            raw_dir=raw_dir,
+            checkpoint_dir=Path(checkpoint_file).parent if checkpoint_file else None,
+        )
+    )
+
+    try:
+        companyfacts_path = None
+
+        if download:
+            print("📥 Downloading SEC bulk files...")
+            downloaded = asyncio.run(ingester.download_bulk_files(force=False))
+            companyfacts_zip = downloaded.get("companyfacts")
+            if companyfacts_zip:
+                print("📦 Extracting companyfacts.zip...")
+                extracted = asyncio.run(
+                    ingester.extract_zip(companyfacts_zip, raw_dir / "bulk_extracted")
+                )
+                for f in extracted:
+                    if f.name == "companyfacts.json":
+                        companyfacts_path = f
+                        break
+
+        if not companyfacts_path:
+            # Look for existing extracted file
+            search_dir = Path(data_dir) if data_dir else raw_dir / "bulk_extracted"
+            companyfacts_path = search_dir / "companyfacts.json"
+            if not companyfacts_path.exists():
+                # Try default location
+                companyfacts_path = raw_dir / "bulk_downloads" / "companyfacts.json"
+            if not companyfacts_path.exists():
+                raise click.ClickException(
+                    "companyfacts.json not found. Use --download to fetch, or --data-dir to specify location."
+                )
+
+        print(f"📂 Using companyfacts file: {companyfacts_path}")
+
+        # Load checkpoint if provided
+        checkpoint = None
+        if checkpoint_file and Path(checkpoint_file).exists():
+            print(f"📌 Loading checkpoint from {checkpoint_file}")
+            with open(checkpoint_file) as f:
+                data = json.load(f)
+            checkpoint = BulkImportCheckpoint.from_dict(data)
+            print(
+                f"   Resuming from CIK: {checkpoint.last_processed_cik or 'beginning'}"
+            )
+            print(f"   Companies processed so far: {checkpoint.companies_processed}")
+
+        print("🚀 Starting bulk ingestion of CompanyFacts...")
+        stats = asyncio.run(
+            ingester.ingest_companyfacts(
+                companyfacts_path,
+                checkpoint=checkpoint,
+                limit=limit,
+            )
+        )
+
+        elapsed = time.time() - start_time
+
+        print("\n✅ Bulk ingestion complete:")
+        print(f"   Companies processed: {stats.companies_processed}")
+        print(f"   Companies inserted: {stats.companies_inserted}")
+        print(f"   Companies updated: {stats.companies_updated}")
+        print(f"   Identifiers inserted: {stats.identifiers_inserted}")
+        print(f"   Filings processed: {stats.filings_processed}")
+        print(f"   Filings inserted: {stats.filings_inserted}")
+        print(f"   Filings skipped: {stats.filings_skipped}")
+        print(f"   Facts processed: {stats.facts_processed}")
+        print(f"   Facts inserted: {stats.facts_inserted}")
+        print(f"   Facts skipped: {stats.facts_skipped}")
+        print(f"   Facts validation errors: {stats.facts_validation_errors}")
+        print(f"   Errors encountered: {len(stats.errors)}")
+        print(f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)")
+
+        if stats.errors:
+            print("\n⚠️  Errors (first 5):")
+            for err in stats.errors[:5]:
+                print(f"   - {err}")
+
+    except (OSError, psycopg.Error, RuntimeError, ValueError) as e:
+        print(f"❌ Bulk ingestion failed: {e}", file=sys.stderr)
+        logger.exception("Bulk ingestion failed")
+        sys.exit(1)
     finally:
         conn.close()
         asyncio.run(client.close())

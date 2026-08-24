@@ -112,6 +112,146 @@ The same economic period may appear in multiple filings (original, amended, rest
 - `source_id` includes accession + concept + period for uniqueness
 - `is_amended` flag on filings tracks amendment chain
 
+#### Historical Bulk Ingestion (Phase 3.5/3.6)
+
+The SEC EDGAR bulk ingestion feature enables loading the complete SEC EDGAR universe using bulk datasets.
+
+##### Bulk Data Files
+
+| File | URL | Description | Size |
+|------|-----|-------------|------|
+| `companyfacts.zip` | `https://www.sec.gov/files/companyfacts.zip` | All CompanyFacts XBRL data | ~2GB compressed |
+| `submissions.zip` | `https://www.sec.gov/files/submissions.zip` | All filing submissions | ~500MB compressed |
+| `company_tickers_exchange.json` | `https://www.sec.gov/files/company_tickers_exchange.json` | Company universe with tickers | ~5MB |
+
+##### CLI Command
+
+```bash
+# Full bulk ingestion (requires confirmation)
+financial-db sec bulk-ingest --confirm
+
+# Test with limited companies
+financial-db sec bulk-ingest --limit 10 --data-dir ./data/raw/sec/bulk_extracted
+
+# Download and process
+financial-db sec bulk-ingest --download --limit 100 --confirm
+
+# Resume from checkpoint
+financial-db sec bulk-ingest --checkpoint-file ./data/checkpoints/sec_bulk/companyfacts_checkpoint.json --confirm
+
+# Dry run to validate setup
+financial-db sec bulk-ingest --dry-run
+```
+
+##### Options
+
+| Option | Description |
+|--------|-------------|
+| `--data-dir PATH` | Directory containing extracted SEC bulk files |
+| `--download` | Download latest bulk files from SEC before processing |
+| `--checkpoint-file PATH` | Path to checkpoint file for resumability |
+| `--limit N` | Process only first N companies (for testing) |
+| `--dry-run` | Validate without writing to PostgreSQL |
+| `--verbose` | Increase logging detail |
+| `--confirm` | Confirm full universe ingestion (required) |
+
+##### Checkpoint File Format
+
+Checkpoints are saved as JSON files with the following structure:
+
+```json
+{
+  "dataset": "companyfacts",
+  "provider": "SEC EDGAR",
+  "source_file": "/path/to/companyfacts.json",
+  "source_file_checksum": "sha256_checksum_of_source_file",
+  "last_processed_cik": "0000789019",
+  "companies_processed": 1234,
+  "facts_processed": 56789,
+  "filings_processed": 456,
+  "updated_at": "2024-01-15T10:30:00+00:00"
+}
+```
+
+- **Atomic writes**: Checkpoints are written to a temp file then renamed to avoid corruption
+- **Checksum validation**: On resume, the source file checksum is compared; if changed, a warning is logged and processing starts fresh
+- **Progress tracking**: Records last CIK processed, companies/facts/filings counts
+
+##### Resumability
+
+If the process crashes or is interrupted:
+
+1. Re-run with the same `--checkpoint-file` path
+2. The ingester loads the checkpoint and skips companies up to `last_processed_cik`
+3. Processing resumes from the next company
+4. Checkpoint is updated after each company completes
+
+##### Idempotency
+
+The bulk ingestion is fully idempotent:
+
+- **Company-level**: Checks if company exists by CIK before creating
+- **Fact-level**: Uses unique constraint on `(company_id, concept, period_start, period_end, filing_id, source_id)` to skip duplicates
+- **Re-running**: Running the same ingestion twice produces zero new records
+- **With checkpoint**: Running with a completed checkpoint results in zero processed companies
+
+##### Output Summary
+
+On completion, the command prints:
+
+```
+✅ Bulk ingestion complete:
+   Companies processed: 1234
+   Companies inserted: 1200
+   Companies updated: 34
+   Identifiers inserted: 1200
+   Filings processed: 0
+   Filings inserted: 0
+   Filings skipped: 0
+   Facts processed: 56789
+   Facts inserted: 55000
+   Facts skipped: 1789
+   Facts validation errors: 0
+   Errors encountered: 2
+   Elapsed time: 3600.5s (60.0min)
+```
+
+##### Storage Requirements
+
+- **Database**: ~50-100GB for complete SEC universe (financial_facts table)
+- **Raw files**: ~2.5GB for compressed bulk downloads
+- **Extracted**: ~10-15GB for uncompressed JSON
+- **Checkpoints**: ~1MB
+
+##### Performance Notes
+
+- **Streaming parser**: Uses `ijson` for memory-efficient parsing of large JSON files
+- **Batch commits**: Facts are committed per company for atomicity
+- **Estimated time**: 4-8 hours for full universe on modest hardware
+- **Rate limiting**: Not applicable for bulk files (single download)
+
+##### Historical Completeness Verification
+
+After ingestion, verify historical data is present:
+
+```sql
+-- Check earliest facts available
+SELECT MIN(period_start) as earliest_period, COUNT(*) as fact_count
+FROM financial_facts ff
+JOIN companies c ON ff.company_id = c.id
+JOIN company_identifiers ci ON c.id = ci.company_id
+WHERE ci.identifier_type = 'CIK';
+
+-- Verify specific company has historical data
+SELECT concept, period_start, period_end, value
+FROM financial_facts ff
+JOIN companies c ON ff.company_id = c.id
+JOIN company_identifiers ci ON c.id = ci.company_id
+WHERE ci.identifier_value = '0000320193'  -- Apple
+  AND ff.concept = 'Assets'
+ORDER BY period_start;
+```
+
 #### Incremental Ingestion
 
 - Raw documents tracked by `(provider_id, source_identifier)` with SHA-256 checksum
