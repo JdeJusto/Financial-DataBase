@@ -5,8 +5,10 @@ Manages PostgreSQL schema migrations stored in db/migrations/.
 
 import os
 from pathlib import Path
+from typing import Any
 
 import psycopg
+from psycopg.rows import dict_row
 
 
 def find_project_root() -> Path:
@@ -27,12 +29,12 @@ MIGRATIONS_DIR = PROJECT_ROOT / "db" / "migrations"
 APPLIED_TABLE = "schema_migrations"
 
 
-def get_connection():
+def get_connection() -> psycopg.Connection[Any]:
     """Get PostgreSQL connection from environment variables."""
     database_url = os.environ.get(
         "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
-    return psycopg.connect(database_url, row_factory=psycopg.rows.dict_row)
+    return psycopg.connect(database_url, row_factory=dict_row)
 
 
 def ensure_applied_table(conn):

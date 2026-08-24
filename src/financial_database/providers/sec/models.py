@@ -30,8 +30,8 @@ class SECFiling:
 
     accession_number: str
     form: str
-    filing_date: date
-    period_end: date
+    filing_date: date | None = None
+    period_end: date | None = None
     period_start: date | None = None
     fiscal_year: int | None = None
     fiscal_period: str | None = None

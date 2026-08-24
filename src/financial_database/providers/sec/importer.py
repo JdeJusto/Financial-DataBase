@@ -185,7 +185,6 @@ class SECImporter:
         raw_doc_path = self._raw_dir / "reference" / "company_tickers_exchange.json"
         if raw_doc_path.exists():
             import hashlib
-            import json
 
             checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
             self.raw_docs.create(
@@ -194,7 +193,7 @@ class SECImporter:
                 storage_path=str(raw_doc_path),
                 checksum=checksum,
                 content_type="application/json",
-                metadata=json.dumps({}),
+                metadata={},
             )
             stats.raw_documents_created += 1
 
@@ -374,7 +373,6 @@ class SECImporter:
         raw_doc_path = self._raw_dir / "submissions" / f"{cik.zfill(10)}.json"
         if raw_doc_path.exists():
             import hashlib
-            import json
 
             checksum = hashlib.sha256(raw_doc_path.read_bytes()).hexdigest()
             self.raw_docs.create(
@@ -383,7 +381,7 @@ class SECImporter:
                 storage_path=str(raw_doc_path),
                 checksum=checksum,
                 content_type="application/json",
-                metadata=json.dumps({}),
+                metadata={},
             )
             stats.raw_documents_created += 1
 
@@ -508,7 +506,6 @@ class SECImporter:
         raw_doc_path = self._raw_dir / "companyfacts" / f"{cik.zfill(10)}.json"
         if raw_doc_path.exists():
             import hashlib
-            import json
 
             try:
                 file_bytes = raw_doc_path.read_bytes()
@@ -528,7 +525,7 @@ class SECImporter:
                 storage_path=str(raw_doc_path),
                 checksum=checksum,
                 content_type="application/json",
-                metadata=json.dumps({}),
+                metadata={},
             )
             stats.raw_documents_created += 1
 

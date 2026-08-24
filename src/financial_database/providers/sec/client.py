@@ -135,6 +135,7 @@ class SECClient:
         await self._ensure_session()
         await self._rate_limit()
 
+        assert self._session is not None
         last_error: Exception | None = None
 
         for attempt in range(max_retries + 1):

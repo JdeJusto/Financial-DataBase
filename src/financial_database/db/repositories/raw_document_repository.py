@@ -3,6 +3,8 @@
 Metadata references to preserved raw data files.
 """
 
+import json
+
 
 class RawDocumentRepository:
     """Repository for raw_documents table."""
@@ -35,7 +37,7 @@ class RawDocumentRepository:
                     storage_path,
                     checksum,
                     content_type,
-                    metadata or {},
+                    json.dumps(metadata or {}),
                     is_processed,
                 ),
             )
