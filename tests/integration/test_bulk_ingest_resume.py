@@ -1,7 +1,7 @@
 """Integration tests for SEC bulk ingestion with checkpoint/resume functionality."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -398,3 +398,241 @@ class TestBulkIngestIdempotency:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestCompanyTickersIngestion:
+    """Test ingest_company_tickers functionality."""
+
+    @pytest.mark.asyncio
+    async def test_ingest_company_tickers_streaming(self, tmp_path):
+        """Test streaming parsing of company_tickers_exchange.json."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        conn = MagicMock()
+        client = MagicMock()
+        client._raw_dir = str(tmp_path)
+        parser = MagicMock()
+        parser._get_exchange_mapping.return_value = MagicMock(
+            internal_code="NASDAQ",
+            internal_name="NASDAQ Stock Market",
+            mic="XNAS",
+            country="USA",
+            timezone="America/New_York",
+            currency="USD",
+        )
+
+        ingester = SECBulkIngester(
+            conn=conn,
+            client=client,
+            parser=parser,
+            raw_dir=tmp_path,
+        )
+
+        # Mock _get_provider_id to return a fixed UUID
+        with patch.object(
+            ingester,
+            "_get_provider_id",
+            return_value="12345678-1234-5678-1234-567812345678",
+        ):
+            # Create test tickers file with SEC format
+            tickers_file = tmp_path / "company_tickers_exchange.json"
+            tickers_file.write_text("""{
+                "data": [
+                    ["0000320193", "Apple Inc.", "AAPL", "NASDAQ", "3571", "Electronic Computers", ""],
+                    ["0000789019", "Microsoft Corporation", "MSFT", "NASDAQ", "7372", "Prepackaged Software", ""],
+                    ["0000999999", "Private Co", "", "", "1234", "Test", ""]
+                ]
+            }""")
+
+            # Mock the internal method to track calls
+            with patch.object(
+                ingester, "_process_ticker_item", new_callable=AsyncMock
+            ) as mock_process:
+
+                async def mock_process_func(item, pid, stats):
+                    stats.companies_processed += 1
+
+                mock_process.side_effect = mock_process_func
+
+                stats = await ingester.ingest_company_tickers(tickers_file)
+
+            # Should process 3 items
+            assert mock_process.call_count == 3
+            assert stats.companies_processed == 3
+
+
+class TestSubmissionsIngestion:
+    """Test ingest_submissions functionality."""
+
+    @pytest.mark.asyncio
+    async def test_ingest_submissions_streaming(self, tmp_path):
+        """Test streaming parsing of submissions JSON files."""
+        from unittest.mock import MagicMock, patch
+
+        conn = MagicMock()
+        client = MagicMock()
+        client._raw_dir = str(tmp_path)
+        parser = MagicMock()
+
+        ingester = SECBulkIngester(
+            conn=conn,
+            client=client,
+            parser=parser,
+            raw_dir=tmp_path,
+            checkpoint_dir=tmp_path / "checkpoints",
+        )
+
+        # Mock _get_provider_id to return a fixed UUID
+        with patch.object(
+            ingester,
+            "_get_provider_id",
+            return_value="12345678-1234-5678-1234-567812345678",
+        ):
+            # Create test submissions directory with files
+            submissions_dir = tmp_path / "submissions"
+            submissions_dir.mkdir()
+
+            (submissions_dir / "CIK0000320193.json").write_text("""{
+                "cik": "0000320193",
+                "name": "Apple Inc.",
+                "filings": {
+                    "recent": {
+                        "accessionNumber": ["0000320193-23-000106"],
+                        "form": ["10-K"],
+                        "filingDate": ["2023-11-03"],
+                        "reportDate": ["2023-09-30"],
+                        "fy": [2023],
+                        "fp": ["FY"]
+                    }
+                }
+            }""")
+
+            (submissions_dir / "CIK0000789019.json").write_text("""{
+                "cik": "0000789019",
+                "name": "Microsoft Corporation",
+                "filings": {
+                    "recent": {
+                        "accessionNumber": ["0000789019-23-000006"],
+                        "form": ["10-K"],
+                        "filingDate": ["2023-07-27"],
+                        "reportDate": ["2023-06-30"],
+                        "fy": [2023],
+                        "fp": ["FY"]
+                    }
+                }
+            }""")
+
+            # Mock the internal method to track calls
+            with patch.object(
+                ingester, "_process_submissions_file", new_callable=AsyncMock
+            ) as mock_process:
+
+                async def mock_process_func(f, cik, pid, stats):
+                    stats.companies_processed += 1
+
+                mock_process.side_effect = mock_process_func
+
+                stats = await ingester.ingest_submissions(submissions_dir)
+
+            # Should process 2 files
+            assert mock_process.call_count == 2
+            assert stats.companies_processed == 2
+
+    @pytest.mark.asyncio
+    async def test_ingest_submissions_resume(self, tmp_path):
+        """Test resuming submissions ingestion from checkpoint."""
+        from unittest.mock import MagicMock, patch
+
+        conn = MagicMock()
+        client = MagicMock()
+        client._raw_dir = str(tmp_path)
+        parser = MagicMock()
+
+        ingester = SECBulkIngester(
+            conn=conn,
+            client=client,
+            parser=parser,
+            raw_dir=tmp_path,
+            checkpoint_dir=tmp_path / "checkpoints",
+        )
+
+        # Mock _get_provider_id to return a fixed UUID
+        with patch.object(
+            ingester,
+            "_get_provider_id",
+            return_value="12345678-1234-5678-1234-567812345678",
+        ):
+            submissions_dir = tmp_path / "submissions"
+            submissions_dir.mkdir()
+
+            (submissions_dir / "CIK0000320193.json").write_text("{}")
+            (submissions_dir / "CIK0000789019.json").write_text("{}")
+
+            # Create checkpoint with first file already processed
+            checkpoint = BulkImportCheckpoint(
+                dataset="submissions",
+                source_file=str(submissions_dir),
+                last_processed_cik="0000320193",
+                companies_processed=1,
+            )
+
+            with patch.object(
+                ingester, "_process_submissions_file", new_callable=AsyncMock
+            ) as mock_process:
+
+                async def mock_process_func(f, cik, pid, stats):
+                    stats.companies_processed += 1
+
+                mock_process.side_effect = mock_process_func
+
+                stats = await ingester.ingest_submissions(
+                    submissions_dir, checkpoint=checkpoint
+                )
+
+            # Should skip first file and only process second
+            assert mock_process.call_count == 1
+            assert stats.companies_processed == 1
+
+    @pytest.mark.asyncio
+    async def test_ingest_submissions_checksum_validation(self, tmp_path):
+        """Test that submissions ingestion validates directory checksum."""
+        from unittest.mock import MagicMock
+
+        conn = MagicMock()
+        client = MagicMock()
+        client._raw_dir = str(tmp_path)
+        parser = MagicMock()
+
+        ingester = SECBulkIngester(
+            conn=conn,
+            client=client,
+            parser=parser,
+            raw_dir=tmp_path,
+            checkpoint_dir=tmp_path / "checkpoints",
+        )
+
+        submissions_dir = tmp_path / "submissions"
+        submissions_dir.mkdir()
+        (submissions_dir / "CIK0000320193.json").write_text("{}")
+
+        # Create checkpoint with old checksum
+        old_checksum = "old_checksum"
+        checkpoint = BulkImportCheckpoint(
+            dataset="submissions",
+            source_file=str(submissions_dir),
+            source_file_checksum=old_checksum,
+        )
+
+        ingester._save_checkpoint(checkpoint)
+
+        # Modify the directory (add new file)
+        (submissions_dir / "CIK0000789019.json").write_text("{}")
+
+        # Load checkpoint - should have old checksum
+        loaded = ingester._load_checkpoint("submissions")
+        assert loaded is not None
+        assert loaded.source_file_checksum == old_checksum
+
+        # New checksum should differ
+        new_checksum = ingester._compute_dir_checksum(submissions_dir)
+        assert new_checksum != old_checksum
