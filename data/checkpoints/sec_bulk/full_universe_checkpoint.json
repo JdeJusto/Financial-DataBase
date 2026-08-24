@@ -1,0 +1,12 @@
+{
+  "dataset": "full_universe",
+  "provider": "SEC EDGAR",
+  "source_file": "api://data.sec.gov",
+  "source_file_checksum": "",
+  "cik": null,
+  "last_processed_cik": "0001652044",
+  "companies_processed": 3,
+  "facts_processed": 72945,
+  "filings_processed": 3013,
+  "updated_at": "2026-08-24T22:01:57.039442+00:00"
+}

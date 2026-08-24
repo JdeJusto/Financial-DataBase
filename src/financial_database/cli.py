@@ -462,10 +462,14 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
 @sec.command("bulk-ingest")
 @click.option("--database-url", default=None, help="PostgreSQL connection URL")
 @click.option(
-    "--data-dir", default=None, help="Directory containing extracted SEC bulk files"
+    "--data-dir",
+    default=None,
+    help="Directory containing extracted SEC bulk files (legacy)",
 )
 @click.option(
-    "--download", is_flag=True, help="Download latest bulk files from SEC first"
+    "--download",
+    is_flag=True,
+    help="Download bulk files from SEC (legacy, not available)",
 )
 @click.option(
     "--checkpoint-file", default=None, help="Path to checkpoint file for resumability"
@@ -481,13 +485,27 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
 @click.option(
     "--confirm", is_flag=True, help="Confirm bulk ingestion (required for full run)"
 )
+@click.option(
+    "--api-mode", is_flag=True, default=True, help="Use SEC API for ingestion (default)"
+)
 def sec_bulk_ingest(
-    database_url, data_dir, download, checkpoint_file, limit, dry_run, verbose, confirm
+    database_url,
+    data_dir,
+    download,
+    checkpoint_file,
+    limit,
+    dry_run,
+    verbose,
+    confirm,
+    api_mode,
 ):
-    """Full historical SEC EDGAR bulk ingestion using companyfacts.zip and submissions.zip.
+    """Full historical SEC EDGAR bulk ingestion using SEC API (companyfacts, submissions per CIK).
 
     WARNING: This processes ALL SEC companies and can take many hours.
     Use --confirm to acknowledge, or --limit for testing.
+
+    The --api-mode flag is enabled by default as bulk ZIP files are no longer available
+    from SEC. This uses the individual companyfacts and submissions API endpoints.
     """
 
     logger = logging.getLogger(__name__)
@@ -514,13 +532,10 @@ def sec_bulk_ingest(
     if dry_run:
         print("🔍 Dry run - validating bulk ingestion setup...")
         print(
-            f"   Data directory: {data_dir or 'default (./data/raw/sec/bulk_downloads)'}"
-        )
-        print(
-            f"   Checkpoint file: {checkpoint_file or 'default (./data/checkpoints/sec_bulk/companyfacts_checkpoint.json)'}"
+            f"   Checkpoint file: {checkpoint_file or 'default (./data/checkpoints/sec_bulk/full_universe_checkpoint.json)'}"
         )
         print(f"   Limit: {limit or 'none (all companies)'}")
-        print(f"   Download: {'yes' if download else 'no'}")
+        print(f"   API mode: {'yes' if api_mode else 'no (legacy)'}")
         return
 
     # Get database connection
@@ -544,36 +559,6 @@ def sec_bulk_ingest(
     )
 
     try:
-        companyfacts_path = None
-
-        if download:
-            print("📥 Downloading SEC bulk files...")
-            downloaded = asyncio.run(ingester.download_bulk_files(force=False))
-            companyfacts_zip = downloaded.get("companyfacts")
-            if companyfacts_zip:
-                print("📦 Extracting companyfacts.zip...")
-                extracted = asyncio.run(
-                    ingester.extract_zip(companyfacts_zip, raw_dir / "bulk_extracted")
-                )
-                for f in extracted:
-                    if f.name == "companyfacts.json":
-                        companyfacts_path = f
-                        break
-
-        if not companyfacts_path:
-            # Look for existing extracted file
-            search_dir = Path(data_dir) if data_dir else raw_dir / "bulk_extracted"
-            companyfacts_path = search_dir / "companyfacts.json"
-            if not companyfacts_path.exists():
-                # Try default location
-                companyfacts_path = raw_dir / "bulk_downloads" / "companyfacts.json"
-            if not companyfacts_path.exists():
-                raise click.ClickException(
-                    "companyfacts.json not found. Use --download to fetch, or --data-dir to specify location."
-                )
-
-        print(f"📂 Using companyfacts file: {companyfacts_path}")
-
         # Load checkpoint if provided
         checkpoint = None
         if checkpoint_file and Path(checkpoint_file).exists():
@@ -586,12 +571,12 @@ def sec_bulk_ingest(
             )
             print(f"   Companies processed so far: {checkpoint.companies_processed}")
 
-        print("🚀 Starting bulk ingestion of CompanyFacts...")
+        print("🚀 Starting full universe bulk ingestion via SEC API...")
         stats = asyncio.run(
-            ingester.ingest_companyfacts(
-                companyfacts_path,
+            ingester.ingest_full_universe(
                 checkpoint=checkpoint,
                 limit=limit,
+                delay_between_requests=0.1,
             )
         )
 

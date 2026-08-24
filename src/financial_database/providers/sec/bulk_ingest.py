@@ -1,5 +1,6 @@
 """SEC EDGAR bulk ingestion module for processing bulk data files."""
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -32,6 +33,7 @@ from financial_database.providers.sec.models import (
     SECCompanyFact,
     SECCompanyFacts,
     SECCompanyFactValue,
+    SECSubmissions,
 )
 from financial_database.providers.sec.parser import (
     ParsedFinancialFact,
@@ -434,16 +436,16 @@ class SECBulkIngester:
                     current_cik = value
                     current_company_facts = {
                         "cik": value,
-                        "entityName": "",
+                        "entity_name": "",
                         "facts": {},
                     }
 
                 elif (
-                    prefix == "entityName"
+                    prefix == "entity_name"
                     and event == "string"
                     and current_company_facts is not None
                 ):
-                    current_company_facts["entityName"] = value
+                    current_company_facts["entity_name"] = value
 
                 elif (
                     prefix == "facts"
@@ -513,7 +515,7 @@ class SECBulkIngester:
                 company_repo = CompanyRepository(self.conn)
                 try:
                     company = company_repo.create(
-                        legal_name=company_facts.get("entityName", ""),
+                        legal_name=company_facts.get("entity_name", ""),
                     )
                     if company:
                         company_id = str(company["id"])
@@ -547,7 +549,7 @@ class SECBulkIngester:
                     cik,
                     {
                         "facts": company_facts.get("facts", {}),
-                        "entityName": company_facts.get("entityName", ""),
+                        "entity_name": company_facts.get("entity_name", ""),
                     },
                     {},
                     provider_id,
@@ -584,7 +586,7 @@ class SECBulkIngester:
                 "errors": len(stats.errors),
             },
         )
-
+        self.conn.commit()
         return stats
 
     async def ingest_company_tickers(self, tickers_path: Path) -> BulkImportStats:
@@ -720,18 +722,25 @@ class SECBulkIngester:
                         existing = cur.fetchone()
 
                     if not existing:
-                        self.listings.create(
-                            company_id=company_id,
-                            exchange_code=mapping.internal_code,
-                            ticker=ticker.upper(),
-                            mic=mapping.mic,
-                            country=mapping.country,
-                            timezone=mapping.timezone,
-                            currency=mapping.currency,
-                            is_primary=True,
-                        )
-                        stats.listings_inserted += 1
-                        self.conn.commit()
+                        # Get exchange by code (e.g., "NASDAQ" -> UUID)
+                        exchange = self.exchanges.get_by_code(mapping.internal_code)
+                        if exchange:
+                            self.listings.create(
+                                company_id=company_id,
+                                exchange_id=exchange["id"],
+                                ticker=ticker.upper(),
+                                is_primary=True,
+                            )
+                            stats.listings_inserted += 1
+                            self.conn.commit()
+                        else:
+                            logger.warning(
+                                "Exchange not found in database",
+                                extra={
+                                    "cik": cik,
+                                    "exchange_code": mapping.internal_code,
+                                },
+                            )
                 else:
                     logger.warning(
                         "Unknown SEC exchange, listing not created",
@@ -960,7 +969,6 @@ class SECBulkIngester:
                 is_amended=is_amended,
                 primary_document=primary_doc,
                 primary_doc_description=primary_doc_desc,
-                source_id=normalized_accession,
             )
 
             if result:
@@ -987,6 +995,78 @@ class SECBulkIngester:
         logger.info(f"Seeded {inserted} exchanges")
         return inserted
 
+    async def _process_submissions_from_api(
+        self, cik: str, submissions: SECSubmissions, provider_id, stats: BulkImportStats
+    ) -> None:
+        """Process SECSubmissions object from API into database."""
+        # Get company (should already exist from _process_ticker_item)
+        company_id = None
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """SELECT c.id FROM companies c
+                   JOIN company_identifiers ci ON c.id = ci.company_id
+                   WHERE ci.identifier_type = 'CIK' AND ci.identifier_value = %s
+                   AND ci.provider_id = (SELECT id FROM data_providers WHERE name = %s)""",
+                (cik, self.SEC_PROVIDER_NAME),
+            )
+            row = cur.fetchone()
+            if row:
+                company_id = str(row["id"])
+            else:
+                logger.warning(
+                    "Company not found for CIK, skipping submissions",
+                    extra={"cik": cik},
+                )
+                return
+
+        # Process filings
+        for filing in submissions.filings:
+            stats.filings_processed += 1
+
+            # Only process financial forms
+            if not self.parser._is_financial_form(filing.form):
+                stats.filings_skipped += 1
+                continue
+
+            accession = filing.normalized_accession
+
+            # Check for existing filing (idempotency)
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id FROM filings
+                       WHERE company_id = %s AND accession_number = %s AND provider_id = %s""",
+                    (company_id, accession, str(provider_id)),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    stats.filings_skipped += 1
+                    continue
+
+            filing_date = filing.filing_date
+            period_end = filing.period_end
+
+            # Insert filing
+            from financial_database.db.repositories import FilingRepository
+
+            filing_repo = FilingRepository(self.conn)
+            result = filing_repo.create(
+                company_id=company_id,
+                provider_id=provider_id,
+                accession_number=accession,
+                form=filing.form,
+                filing_date=filing_date,
+                period_start=None,
+                period_end=period_end,
+                fiscal_year=filing.fiscal_year,
+                fiscal_period=filing.fiscal_period or "FY",
+                is_amended=filing.is_amended,
+            )
+
+            if result:
+                stats.filings_inserted += 1
+            else:
+                stats.filings_skipped += 1
+
     async def _process_company_facts(
         self,
         cik: str,
@@ -999,13 +1079,33 @@ class SECBulkIngester:
         # Create SECCompanyFacts object
         sec_company_facts = SECCompanyFacts(
             cik=cik,
-            entityName=company_facts.get("entityName", ""),
+            entity_name=company_facts.get("entity_name", ""),
             facts=self._parse_company_facts_dict(company_facts.get("facts", {})),
             metadata={},
         )
 
         # Parse facts
         parsed_facts = self.parser.parse_company_facts(sec_company_facts)
+
+        # Look up company_id from CIK
+        company_id = None
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """SELECT c.id FROM companies c
+                   JOIN company_identifiers ci ON c.id = ci.company_id
+                   WHERE ci.identifier_type = 'CIK' AND ci.identifier_value = %s
+                   AND ci.provider_id = (SELECT id FROM data_providers WHERE name = %s)""",
+                (cik, self.SEC_PROVIDER_NAME),
+            )
+            row = cur.fetchone()
+            if row:
+                company_id = str(row["id"])
+
+        if company_id is None:
+            logger.warning(
+                "Company not found for CIK, skipping facts", extra={"cik": cik}
+            )
+            return
 
         # Set provider_id on all facts
         for fact in parsed_facts:
@@ -1015,7 +1115,7 @@ class SECBulkIngester:
         for fact in parsed_facts:
             stats.facts_processed += 1
             try:
-                await self._import_financial_fact(cik, fact, stats)
+                await self._import_financial_fact(company_id, fact, stats)
             except (ValueError, TypeError, KeyError) as e:
                 stats.errors.append(
                     {
@@ -1175,6 +1275,233 @@ class SECBulkIngester:
             result[namespace] = namespace_dict
         return result
 
+    async def ingest_full_universe(
+        self,
+        checkpoint: BulkImportCheckpoint | None = None,
+        limit: int | None = None,
+        delay_between_requests: float = 0.1,
+    ) -> BulkImportStats:
+        """
+        Ingest full SEC universe using API-based approach.
+
+        This method:
+        1. Fetches company universe from company_tickers.json
+        2. For each CIK, fetches companyfacts and submissions from SEC API
+        3. Processes with checkpointing and rate limiting
+
+        This replaces the bulk ZIP file approach since SEC no longer provides
+        companyfacts.zip and submissions.zip at the old URLs.
+        """
+        stats = BulkImportStats()
+        provider_id = self._get_provider_id()
+
+        # Load or create checkpoint
+        if checkpoint is None:
+            checkpoint = BulkImportCheckpoint(
+                dataset="full_universe",
+                provider=self.SEC_PROVIDER_NAME,
+            )
+            loaded = self._load_checkpoint("full_universe")
+            if loaded:
+                checkpoint = loaded
+
+        # Update checkpoint with current info
+        checkpoint.provider = self.SEC_PROVIDER_NAME
+        checkpoint.source_file = "api://data.sec.gov"
+
+        logger.info(
+            "Starting full universe ingestion via API",
+            extra={
+                "resume_from_cik": checkpoint.last_processed_cik,
+                "companies_processed": checkpoint.companies_processed,
+                "limit": limit,
+            },
+        )
+
+        # Step 1: Fetch company universe
+        logger.info("Fetching company universe from SEC...")
+        companies = await self.client.get_company_tickers()
+        total_companies = len(companies)
+
+        if limit and limit > 0:
+            companies = companies[:limit]
+            logger.info(f"Limited to first {limit} companies")
+
+        # Sort companies by CIK to ensure proper checkpoint ordering
+        companies = sorted(companies, key=lambda c: c.normalized_cik)
+
+        logger.info(
+            f"Processing {len(companies)} companies (of {total_companies} total)"
+        )
+
+        # Process each company
+        for company in companies:
+            cik = company.normalized_cik
+
+            # Skip if already processed (resume from checkpoint)
+            if checkpoint.last_processed_cik and cik <= checkpoint.last_processed_cik:
+                logger.debug("Skipping already processed CIK", extra={"cik": cik})
+                continue
+
+            try:
+                logger.info(
+                    "Processing company",
+                    extra={
+                        "cik": cik,
+                        "company_name": company.name,
+                        "ticker": company.ticker,
+                    },
+                )
+
+                # Process company tickers (upsert company, identifiers, listings)
+                await self._process_ticker_item(
+                    [
+                        cik,
+                        company.name,
+                        company.ticker or "",
+                        company.exchange or "",
+                        "",
+                        "",
+                        "",
+                    ],
+                    provider_id,
+                    stats,
+                )
+
+                # Fetch and process companyfacts
+                try:
+                    logger.debug("Fetching companyfacts", extra={"cik": cik})
+                    company_facts = await self.client.get_company_facts(cik)
+
+                    # Convert SECCompanyFacts object to dict format expected by _process_company_facts
+                    facts_dict = {}
+                    for ns, concepts in company_facts.facts.items():
+                        facts_dict[ns] = {}
+                        for concept_name, fact in concepts.items():
+                            # Group values by unit
+                            units_dict = {}
+                            for v in fact.values:
+                                unit = v.metadata.get("unit", fact.unit or "USD")
+                                if unit not in units_dict:
+                                    units_dict[unit] = []
+                                units_dict[unit].append(
+                                    {
+                                        "val": v.value,
+                                        "start": v.period_start.isoformat()
+                                        if v.period_start
+                                        else None,
+                                        "end": v.period_end.isoformat(),
+                                        "fy": v.fiscal_year,
+                                        "fp": v.fiscal_period,
+                                        "form": v.form,
+                                        "filed": v.filing_date.isoformat()
+                                        if v.filing_date
+                                        else None,
+                                        "accn": v.accession_number,
+                                        "frame": v.frame,
+                                    }
+                                )
+                            facts_dict[ns][concept_name] = {
+                                "label": fact.label,
+                                "unit": fact.unit,
+                                "units": units_dict,
+                            }
+                    await self._process_company_facts(
+                        cik,
+                        {
+                            "facts": facts_dict,
+                            "entity_name": company_facts.entity_name,
+                        },
+                        {},
+                        provider_id,
+                        stats,
+                    )
+                    stats.filings_processed += 0  # Will be updated by submissions
+                except (
+                    aiohttp.ClientError,
+                    ValueError,
+                    TypeError,
+                    KeyError,
+                    RuntimeError,
+                ) as e:
+                    logger.warning(
+                        "Failed to fetch/process companyfacts",
+                        extra={"cik": cik, "error": str(e)},
+                    )
+                    stats.errors.append(
+                        {"cik": cik, "stage": "companyfacts", "error": str(e)}
+                    )
+
+                # Fetch and process submissions
+                try:
+                    logger.debug("Fetching submissions", extra={"cik": cik})
+                    submissions = await self.client.get_submissions(cik)
+
+                    # Process submissions - convert to format expected by _process_submissions_from_api
+                    await self._process_submissions_from_api(
+                        cik, submissions, provider_id, stats
+                    )
+                except (
+                    aiohttp.ClientError,
+                    ValueError,
+                    TypeError,
+                    KeyError,
+                    RuntimeError,
+                ) as e:
+                    logger.warning(
+                        "Failed to fetch/process submissions",
+                        extra={"cik": cik, "error": str(e)},
+                    )
+                    stats.errors.append(
+                        {"cik": cik, "stage": "submissions", "error": str(e)}
+                    )
+
+                # Update stats
+                stats.companies_processed += 1
+
+                # Update checkpoint after successful company processing
+                checkpoint.last_processed_cik = cik
+                checkpoint.companies_processed = stats.companies_processed
+                checkpoint.facts_processed = stats.facts_processed
+                checkpoint.filings_processed = stats.filings_processed
+                self._save_checkpoint(checkpoint)
+                self.conn.commit()
+
+                # Rate limiting between companies
+                if delay_between_requests > 0:
+                    await asyncio.sleep(delay_between_requests)
+
+            except (ValueError, TypeError, KeyError, RuntimeError) as e:
+                logger.error(
+                    "Failed to process company",
+                    extra={"cik": cik, "error": str(e)},
+                )
+                stats.errors.append(
+                    {"cik": cik, "error": str(e), "stage": "company_processing"}
+                )
+                # Still advance checkpoint to avoid infinite retry
+                checkpoint.last_processed_cik = cik
+                checkpoint.companies_processed = stats.companies_processed
+                self._save_checkpoint(checkpoint)
+                self.conn.commit()
+
+        # Final checkpoint save
+        self._save_checkpoint(checkpoint)
+
+        logger.info(
+            "Full universe ingestion complete",
+            extra={
+                "companies_processed": stats.companies_processed,
+                "companies_inserted": stats.companies_inserted,
+                "facts_inserted": stats.facts_inserted,
+                "facts_skipped": stats.facts_skipped,
+                "filings_inserted": stats.filings_inserted,
+                "filings_skipped": stats.filings_skipped,
+                "errors": len(stats.errors),
+            },
+        )
+        return stats
+
 
 async def create_bulk_ingester(
     database_url: str | None = None,
@@ -1191,7 +1518,7 @@ async def create_bulk_ingester(
     url = database_url or os.environ.get(
         "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
-    conn = psycopg.connect(url)
+    conn = psycopg.connect(url, row_factory=psycopg.rows.dict_row)
     client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
     ingester = SECBulkIngester(
         conn, client, SECParser(), Path(raw_dir or "./data/raw/sec"), batch_size=100
