@@ -40,4 +40,4 @@ pyrightconfig.json
 *.swo
 
 # Mac
-.DS_Store
+.DS_Storedata/checkpoints/
