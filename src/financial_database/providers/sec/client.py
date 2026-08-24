@@ -316,7 +316,7 @@ class SECClient:
                     form=recent.get("form", [None] * count)[i],
                     filing_date=filing_date_str if filing_date_str else None,
                     period_start=None,  # Not directly provided in recent
-                    period_end=period_end_str,
+                    period_end=period_end_str,  # type: ignore[arg-type]
                     fiscal_year=recent.get("fy", [None] * count)[i],
                     fiscal_period=recent.get("fp", [None] * count)[i],
                     filing_url=urljoin(

@@ -1,7 +1,6 @@
 """Database connection module.
 
 Provides PostgreSQL connection using psycopg3.
-
 """
 
 import os

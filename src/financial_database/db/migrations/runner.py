@@ -29,7 +29,7 @@ MIGRATIONS_DIR = PROJECT_ROOT / "db" / "migrations"
 APPLIED_TABLE = "schema_migrations"
 
 
-def get_connection() -> psycopg.Connection[Any]:
+def get_connection() -> "psycopg.Connection[Any]":
     """Get PostgreSQL connection from environment variables."""
     database_url = os.environ.get(
         "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"

@@ -115,7 +115,8 @@ def seed_provider(database_url):
             else:
                 cur.execute("SELECT id FROM data_providers WHERE name = 'SEC EDGAR'")
                 row = cur.fetchone()
-                print(f"✅ SEC provider already exists: {row['id']}")
+                if row:
+                    print(f"✅ SEC provider already exists: {row['id']}")
         conn.commit()
     finally:
         conn.close()
@@ -125,10 +126,8 @@ def seed_provider(database_url):
 @click.option("--database-url", default=None, help="PostgreSQL connection URL")
 def seed_exchanges(database_url):
     """Seed exchanges table with SEC exchange mappings."""
-    from financial_database.providers.sec import (
-        ExchangeRepository,
-        get_exchange_mappings,
-    )
+    from financial_database.db.repositories import ExchangeRepository
+    from financial_database.providers.sec import get_exchange_mappings
 
     conn = _get_db_connection(database_url)
     try:
@@ -178,10 +177,10 @@ def sec_universe(database_url, dry_run):
         return
 
     conn = _get_db_connection(database_url)
-    try:
-        client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
-        importer = SECImporter(conn, client)
+    client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
+    importer = SECImporter(conn, client)
 
+    try:
         print("🌱 Seeding SEC provider and exchanges...")
         asyncio.run(importer.seed_exchanges())
 
@@ -230,10 +229,10 @@ def sec_submissions(cik, database_url, dry_run):
         return
 
     conn = _get_db_connection(database_url)
-    try:
-        client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
-        importer = SECImporter(conn, client)
+    client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
+    importer = SECImporter(conn, client)
 
+    try:
         print(f"📥 Importing submissions for CIK {cik}...")
         stats = asyncio.run(importer.run_import_pipeline("sec_submissions", cik=cik))
 
@@ -281,10 +280,10 @@ def sec_companyfacts(cik, database_url, dry_run):
         return
 
     conn = _get_db_connection(database_url)
-    try:
-        client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
-        importer = SECImporter(conn, client)
+    client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
+    importer = SECImporter(conn, client)
 
+    try:
         print(f"📥 Importing CompanyFacts for CIK {cik}...")
         stats = asyncio.run(importer.run_import_pipeline("sec_companyfacts", cik=cik))
 
@@ -333,10 +332,10 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
         return
 
     conn = _get_db_connection(database_url)
-    try:
-        client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
-        importer = SECImporter(conn, client)
+    client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
+    importer = SECImporter(conn, client)
 
+    try:
         print(f"🔄 Full sync for CIK {cik}...")
         pipeline = "sec_sync"
         if no_facts and no_filings:
@@ -402,10 +401,10 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
     raw_dir = _get_raw_dir()
 
     conn = _get_db_connection(database_url)
-    try:
-        client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
-        importer = SECImporter(conn, client)
+    client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
+    importer = SECImporter(conn, client)
 
+    try:
         if not skip_universe:
             print("🌱 Seeding SEC provider and exchanges...")
             asyncio.run(importer.seed_exchanges())
