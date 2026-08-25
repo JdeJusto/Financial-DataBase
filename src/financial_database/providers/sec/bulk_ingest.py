@@ -28,6 +28,7 @@ from financial_database.db.repositories import (
 )
 from financial_database.providers.sec.client import (
     SECClient,
+    SECNotFoundError,
 )
 from financial_database.providers.sec.models import (
     SECCompanyFact,
@@ -1423,6 +1424,7 @@ class SECBulkIngester:
                     TypeError,
                     KeyError,
                     RuntimeError,
+                    SECNotFoundError,
                 ) as e:
                     logger.warning(
                         "Failed to fetch/process companyfacts",
@@ -1447,6 +1449,7 @@ class SECBulkIngester:
                     TypeError,
                     KeyError,
                     RuntimeError,
+                    SECNotFoundError,
                 ) as e:
                     logger.warning(
                         "Failed to fetch/process submissions",
