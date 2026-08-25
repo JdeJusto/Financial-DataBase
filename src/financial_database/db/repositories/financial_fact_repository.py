@@ -122,31 +122,54 @@ class FinancialFactRepository:
                     "ORDER BY ff.filing_date DESC",
                     (company_id,),
                 )
-            return [dict(row) for row in cur.fetchall()]
 
-    def get_duration_facts(
-        self, company_id: str, concept: str | None = None
+    def create_batch(
+        self,
+        facts: list[dict],
     ) -> list[dict]:
-        """Get duration (income statement) facts where period_start IS NOT NULL."""
+        """Insert multiple financial facts in a single batch.
+
+        Each fact dict should contain all fields required by create().
+        Returns list of inserted facts (excludes duplicates skipped by ON CONFLICT).
+        """
+        if not facts:
+            return []
+
         with self.conn.cursor() as cur:
-            if concept:
-                cur.execute(
-                    "SELECT ff.id, ff.company_id, ff.concept, ff.value, ff.unit, ff.period_start, ff.period_end, "
-                    "ff.fiscal_year, ff.fiscal_period, ff.provider_id, ff.source_id, ff.filing_id, ff.form, ff.filing_date, "
-                    "ff.created_at, c.legal_name "
-                    "FROM financial_facts ff JOIN companies c ON ff.company_id = c.id "
-                    "WHERE ff.concept = %s AND ff.company_id = %s AND ff.period_start IS NOT NULL "
-                    "ORDER BY ff.filing_date DESC",
-                    (concept, company_id),
+            # Build multi-row INSERT
+            placeholders = ", ".join(["%s"] * 15)
+            rows_placeholder = f"({placeholders})"
+            rows_placeholders = ", ".join([rows_placeholder] * len(facts))
+
+            query = f"""INSERT INTO financial_facts (company_id, concept, namespace, value, unit, period_start, period_end,
+               fiscal_year, fiscal_period, provider_id, source_id, filing_id, form, filing_date, frame)
+               VALUES {rows_placeholders}
+               ON CONFLICT (company_id, concept, period_start, period_end, filing_id, source_id) DO NOTHING
+               RETURNING id, company_id, concept, namespace, value, unit, period_start, period_end,
+               fiscal_year, fiscal_period, provider_id, source_id, filing_id, form, filing_date, frame, created_at"""
+
+            # Flatten facts into single parameter list
+            params = []
+            for fact in facts:
+                params.extend(
+                    [
+                        fact["company_id"],
+                        fact["concept"],
+                        fact.get("namespace"),
+                        float(fact["value"]) if fact["value"] is not None else None,
+                        fact["unit"],
+                        fact.get("period_start"),
+                        fact["period_end"],
+                        fact["fiscal_year"],
+                        fact["fiscal_period"],
+                        fact["provider_id"],
+                        fact.get("source_id"),
+                        fact.get("filing_id"),
+                        fact.get("form"),
+                        fact.get("filing_date"),
+                        fact.get("frame"),
+                    ]
                 )
-            else:
-                cur.execute(
-                    "SELECT ff.id, ff.company_id, ff.concept, ff.value, ff.unit, ff.period_start, ff.period_end, "
-                    "ff.fiscal_year, ff.fiscal_period, ff.provider_id, ff.source_id, ff.filing_id, ff.form, ff.filing_date, "
-                    "ff.created_at, c.legal_name "
-                    "FROM financial_facts ff JOIN companies c ON ff.company_id = c.id "
-                    "WHERE ff.company_id = %s AND ff.period_start IS NOT NULL "
-                    "ORDER BY ff.filing_date DESC",
-                    (company_id,),
-                )
+
+            cur.execute(query, params)
             return [dict(row) for row in cur.fetchall()]

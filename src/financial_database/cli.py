@@ -16,6 +16,10 @@ import psycopg
 
 from financial_database.db.migrations.runner import run_pending
 from financial_database.db.migrations.runner import status as migration_status
+from financial_database.providers.sec.bulk_ingest import (
+    BulkImportCheckpoint,
+    create_bulk_ingester,
+)
 
 
 @click.group()
@@ -462,17 +466,13 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
 @sec.command("bulk-ingest")
 @click.option("--database-url", default=None, help="PostgreSQL connection URL")
 @click.option(
-    "--data-dir",
-    default=None,
-    help="Directory containing extracted SEC bulk files (legacy)",
+    "--data-dir", default=None, help="Directory containing extracted SEC bulk files"
 )
 @click.option(
-    "--download",
-    is_flag=True,
-    help="Download bulk files from SEC (legacy, not available)",
+    "--download", is_flag=True, help="Download latest bulk files from SEC first"
 )
 @click.option(
-    "--checkpoint-file", default=None, help="Path to checkpoint file for resumability"
+    "--checkpoint-file", default=None, help="Path to a checkpoint file for resumability"
 )
 @click.option(
     "--limit",
@@ -499,35 +499,22 @@ def sec_bulk_ingest(
     confirm,
     api_mode,
 ):
-    """Full historical SEC EDGAR bulk ingestion using SEC API (companyfacts, submissions per CIK).
+    """Full historical SEC EDGAR bulk ingestion using companyfacts.zip and submissions.zip.
 
-    WARNING: This processes ALL SEC companies and can take many hours.
-    Use --confirm to acknowledge, or --limit for testing.
-
-    The --api-mode flag is enabled by default as bulk ZIP files are no longer available
-    from SEC. This uses the individual companyfacts and submissions API endpoints.
+    WARNING: This processes ALL SEC companies and can take many hours. Use
+    --confirm to acknowledge, or --limit for testing.
     """
-
-    logger = logging.getLogger(__name__)
-
-    from financial_database.providers.sec.bulk_ingest import (
-        BulkImportCheckpoint,
-        create_bulk_ingester,
-    )
 
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
 
-    # Check confirmation for full runs
     if limit is None and not confirm and not dry_run:
         raise click.ClickException(
             "Bulk ingestion processes thousands of companies and takes hours. "
             "Use --confirm to proceed, or --limit N for testing, or --dry-run to validate."
         )
-
-    start_time = time.time()
 
     if dry_run:
         print("🔍 Dry run - validating bulk ingestion setup...")
@@ -535,7 +522,7 @@ def sec_bulk_ingest(
             f"   Checkpoint file: {checkpoint_file or 'default (./data/checkpoints/sec_bulk/full_universe_checkpoint.json)'}"
         )
         print(f"   Limit: {limit or 'none (all companies)'}")
-        print(f"   API mode: {'yes' if api_mode else 'no (legacy)'}")
+        print(f"   Download: {'yes' if download else 'no'}")
         return
 
     # Get database connection URL
@@ -545,6 +532,8 @@ def sec_bulk_ingest(
 
     user_agent = _get_user_agent()
     raw_dir = Path(data_dir) if data_dir else _get_raw_dir()
+
+    start_time = time.time()
 
     # Create bulk ingester
     print("🔧 Initializing bulk ingester...")
@@ -557,30 +546,28 @@ def sec_bulk_ingest(
         )
     )
 
-    # Install signal handlers for graceful shutdown
-    client.install_signal_handlers()
+    # Load checkpoint if provided
+    checkpoint = None
+    if checkpoint_file and Path(checkpoint_file).exists():
+        print(f"📌 Loading checkpoint from {checkpoint_file}")
+        with open(checkpoint_file) as f:
+            data = json.load(f)
+        checkpoint = BulkImportCheckpoint.from_dict(data)
+        print(f"   Resuming from CIK: {checkpoint.last_processed_cik or 'beginning'}")
+        print(f"   Companies processed so far: {checkpoint.companies_processed}")
+
+    async def run_with_signals():
+        # Install signal handlers for graceful shutdown
+        client.install_signal_handlers()
+
+        return await ingester.ingest_full_universe(
+            checkpoint=checkpoint,
+            limit=limit,
+            delay_between_requests=0.1,
+        )
 
     try:
-        # Load checkpoint if provided
-        checkpoint = None
-        if checkpoint_file and Path(checkpoint_file).exists():
-            print(f"📌 Loading checkpoint from {checkpoint_file}")
-            with open(checkpoint_file) as f:
-                data = json.load(f)
-            checkpoint = BulkImportCheckpoint.from_dict(data)
-            print(
-                f"   Resuming from CIK: {checkpoint.last_processed_cik or 'beginning'}"
-            )
-            print(f"   Companies processed so far: {checkpoint.companies_processed}")
-
-        print("🚀 Starting full universe bulk ingestion via SEC API...")
-        stats = asyncio.run(
-            ingester.ingest_full_universe(
-                checkpoint=checkpoint,
-                limit=limit,
-                delay_between_requests=0.1,
-            )
-        )
+        stats = asyncio.run(run_with_signals())
 
         elapsed = time.time() - start_time
 
@@ -606,7 +593,7 @@ def sec_bulk_ingest(
 
     except (OSError, psycopg.Error, RuntimeError, ValueError) as e:
         print(f"❌ Bulk ingestion failed: {e}", file=sys.stderr)
-        logger.exception("Bulk ingestion failed")
+        logging.getLogger(__name__).exception("Bulk ingestion failed")
         sys.exit(1)
     except asyncio.CancelledError:
         print("\n⚠️  Ingestion interrupted by signal, checkpoint saved for resume")

@@ -1127,31 +1127,34 @@ class SECBulkIngester:
         for i in range(0, facts_total, FACTS_PER_TRANSACTION):
             chunk = parsed_facts[i : i + FACTS_PER_TRANSACTION]
 
-            # Process chunk in a single transaction
+            # Convert chunk to dict format for batch insert
+            facts_batch = []
+            for fact in chunk:
+                stats.facts_processed += 1
+                fact_dict = {
+                    "company_id": company_id,
+                    "concept": fact.concept,
+                    "namespace": fact.namespace,
+                    "value": fact.value,
+                    "unit": fact.unit,
+                    "period_start": fact.period_start,
+                    "period_end": fact.period_end,
+                    "fiscal_year": fact.fiscal_year,
+                    "fiscal_period": fact.fiscal_period,
+                    "provider_id": fact.provider_id,
+                    "source_id": fact.source_id,
+                    "filing_id": fact.filing_id,
+                    "form": fact.form,
+                    "filing_date": fact.filing_date,
+                    "frame": fact.frame,
+                }
+                facts_batch.append(fact_dict)
+
+            # Process chunk in a single transaction using batch insert
             with self.conn.transaction():
-                for fact in chunk:
-                    stats.facts_processed += 1
-                    try:
-                        await self._import_financial_fact(company_id, fact, stats)
-                    except (ValueError, TypeError, KeyError) as e:
-                        stats.errors.append(
-                            {
-                                "cik": cik,
-                                "concept": fact.concept,
-                                "namespace": fact.namespace,
-                                "error": str(e),
-                                "type": type(e).__name__,
-                            }
-                        )
-                        stats.facts_validation_errors += 1
-                        logger.error(
-                            "Failed to import fact",
-                            extra={
-                                "cik": cik,
-                                "concept": fact.concept,
-                                "error": str(e),
-                            },
-                        )
+                inserted = self.facts.create_batch(facts_batch)
+                stats.facts_inserted += len(inserted)
+                stats.facts_skipped += len(facts_batch) - len(inserted)
 
             facts_processed += len(chunk)
 
