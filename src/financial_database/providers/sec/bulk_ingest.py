@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time
 import uuid
 import zipfile
 from dataclasses import dataclass, field
@@ -49,6 +50,11 @@ logger = logging.getLogger(__name__)
 SEC_BULK_COMPANYFACTS_URL = "https://www.sec.gov/files/companyfacts.zip"
 SEC_BULK_SUBMISSIONS_URL = "https://www.sec.gov/files/submissions.zip"
 SEC_BULK_COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
+SEC_COMPANY_TICKERS_JSON_URL = "https://www.sec.gov/files/company_tickers.json"
+
+# Configuration for periodic checkpointing and transaction chunking
+FACTS_PER_TRANSACTION = 500  # Number of facts per database transaction
+CHECKPOINT_INTERVAL_SECONDS = 30.0  # Checkpoint interval in seconds
 
 # Alternative working URL for company tickers
 SEC_COMPANY_TICKERS_JSON_URL = "https://www.sec.gov/files/company_tickers.json"
@@ -1076,7 +1082,7 @@ class SECBulkIngester:
         provider_id,
         stats: BulkImportStats,
     ) -> None:
-        """Process a single company's facts."""
+        """Process a single company's facts with chunked transactions and periodic checkpoints."""
         # Create SECCompanyFacts object
         sec_company_facts = SECCompanyFacts(
             cik=cik,
@@ -1112,26 +1118,66 @@ class SECBulkIngester:
         for fact in parsed_facts:
             fact.provider_id = str(provider_id)
 
-        # Import facts
-        for fact in parsed_facts:
-            stats.facts_processed += 1
-            try:
-                await self._import_financial_fact(company_id, fact, stats)
-            except (ValueError, TypeError, KeyError) as e:
-                stats.errors.append(
-                    {
+        # Import facts in chunks with periodic checkpointing
+        facts_total = len(parsed_facts)
+        facts_processed = 0
+        checkpoint_timer = time.monotonic()
+
+        # Process facts in chunks
+        for i in range(0, facts_total, FACTS_PER_TRANSACTION):
+            chunk = parsed_facts[i : i + FACTS_PER_TRANSACTION]
+
+            # Process chunk in a single transaction
+            with self.conn.transaction():
+                for fact in chunk:
+                    stats.facts_processed += 1
+                    try:
+                        await self._import_financial_fact(company_id, fact, stats)
+                    except (ValueError, TypeError, KeyError) as e:
+                        stats.errors.append(
+                            {
+                                "cik": cik,
+                                "concept": fact.concept,
+                                "namespace": fact.namespace,
+                                "error": str(e),
+                                "type": type(e).__name__,
+                            }
+                        )
+                        stats.facts_validation_errors += 1
+                        logger.error(
+                            "Failed to import fact",
+                            extra={
+                                "cik": cik,
+                                "concept": fact.concept,
+                                "error": str(e),
+                            },
+                        )
+
+            facts_processed += len(chunk)
+
+            # Periodic checkpointing based on time interval
+            current_time = time.monotonic()
+            if current_time - checkpoint_timer >= CHECKPOINT_INTERVAL_SECONDS:
+                logger.debug(
+                    "Periodic checkpoint during company processing",
+                    extra={
                         "cik": cik,
-                        "concept": fact.concept,
-                        "namespace": fact.namespace,
-                        "error": str(e),
-                        "type": type(e).__name__,
-                    }
+                        "facts_processed": facts_processed,
+                        "facts_total": facts_total,
+                    },
                 )
-                stats.facts_validation_errors += 1
-                logger.error(
-                    "Failed to import fact",
-                    extra={"cik": cik, "concept": fact.concept, "error": str(e)},
+                # The transaction above commits automatically on exit
+                checkpoint_timer = time.monotonic()
+
+            # Check for shutdown between chunks
+            if hasattr(self, "_shutdown_requested") and getattr(
+                self, "_shutdown_requested", False
+            ):
+                logger.info(
+                    "Shutdown requested, stopping company processing",
+                    extra={"cik": cik},
                 )
+                break
 
     def _build_filing_id_map(
         self, company_id: str, provider_id: uuid.UUID

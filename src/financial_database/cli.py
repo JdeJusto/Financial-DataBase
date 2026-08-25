@@ -538,11 +538,10 @@ def sec_bulk_ingest(
         print(f"   API mode: {'yes' if api_mode else 'no (legacy)'}")
         return
 
-    # Get database connection
-    url = database_url or os.environ.get(
+    # Get database connection URL
+    database_url = database_url or os.environ.get(
         "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
-    conn = psycopg.connect(url, row_factory=psycopg.rows.dict_row)
 
     user_agent = _get_user_agent()
     raw_dir = Path(data_dir) if data_dir else _get_raw_dir()
@@ -557,6 +556,9 @@ def sec_bulk_ingest(
             checkpoint_dir=Path(checkpoint_file).parent if checkpoint_file else None,
         )
     )
+
+    # Install signal handlers for graceful shutdown
+    client.install_signal_handlers()
 
     try:
         # Load checkpoint if provided
@@ -606,8 +608,10 @@ def sec_bulk_ingest(
         print(f"❌ Bulk ingestion failed: {e}", file=sys.stderr)
         logger.exception("Bulk ingestion failed")
         sys.exit(1)
+    except asyncio.CancelledError:
+        print("\n⚠️  Ingestion interrupted by signal, checkpoint saved for resume")
+        sys.exit(130)
     finally:
-        conn.close()
         asyncio.run(client.close())
 
 

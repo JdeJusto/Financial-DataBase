@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import signal
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -36,6 +37,10 @@ MAX_RETRIES = 3
 BASE_DELAY = 1.0
 MAX_DELAY = 60.0
 RATE_LIMIT_DELAY = 0.1  # 10 requests per second max
+
+# Network resilience configuration
+NETWORK_RETRY_INTERVAL = 10.0  # seconds between retry attempts
+GRACEFUL_SHUTDOWN_TIMEOUT = 15.0  # seconds to wait for graceful shutdown
 
 
 class SECClientError(Exception):
@@ -76,6 +81,10 @@ class SECClient:
         self._last_request_time = 0.0
         self._rate_limit_lock = asyncio.Lock()
 
+        # Graceful shutdown state
+        self._shutdown_requested = False
+        self._shutdown_event = asyncio.Event()
+
         # Ensure raw directories exist
         for subdir in ["submissions", "companyfacts", "reference"]:
             (self._raw_dir / subdir).mkdir(parents=True, exist_ok=True)
@@ -106,6 +115,37 @@ class SECClient:
             await self._session.close()
             self._session = None
 
+    def request_shutdown(self) -> None:
+        """Request graceful shutdown."""
+        logger.info("Graceful shutdown requested")
+        self._shutdown_requested = True
+        self._shutdown_event.set()
+
+    async def _graceful_shutdown(self) -> None:
+        """Perform graceful shutdown."""
+        logger.info("Starting graceful shutdown...")
+        self._shutdown_requested = True
+        self._shutdown_event.set()
+        # Wait for any ongoing request to complete or timeout
+        try:
+            await asyncio.wait_for(
+                self._shutdown_event.wait(), timeout=GRACEFUL_SHUTDOWN_TIMEOUT
+            )
+        except TimeoutError:
+            logger.warning("Graceful shutdown timeout, forcing close")
+        await self.close()
+        logger.info("Graceful shutdown complete")
+
+    def install_signal_handlers(self) -> None:
+        """Install signal handlers for graceful shutdown."""
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(
+                sig,
+                lambda s=sig: asyncio.create_task(self._graceful_shutdown()),
+            )
+        logger.info("Signal handlers installed for graceful shutdown")
+
     async def _rate_limit(self) -> None:
         """Enforce minimum delay between requests."""
         async with self._rate_limit_lock:
@@ -135,11 +175,53 @@ class SECClient:
         await self._ensure_session()
         await self._rate_limit()
 
-        assert self._session is not None
-        last_error: Exception | None = None
+        self._session: aiohttp.ClientSession | None = None
+        self._last_request_time = 0.0
+        self._rate_limit_lock = asyncio.Lock()
 
-        for attempt in range(max_retries + 1):
+        # Graceful shutdown state
+        self._shutdown_requested = False
+        self._shutdown_event = asyncio.Event()
+
+        # Ensure raw directories exist
+        for subdir in ["submissions", "companyfacts", "reference"]:
+            (self._raw_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+    def _check_shutdown(self) -> None:
+        """Check if shutdown was requested and raise if so."""
+        if self._shutdown_requested:
+            raise asyncio.CancelledError("Shutdown requested")
+
+    async def _wait_with_shutdown_check(self, delay: float) -> None:
+        """Wait for delay seconds while checking for shutdown."""
+        waited = 0.0
+        while waited < delay:
+            if self._shutdown_requested:
+                raise asyncio.CancelledError("Shutdown requested during wait")
+            await asyncio.sleep(min(NETWORK_RETRY_INTERVAL, delay - waited))
+            waited += NETWORK_RETRY_INTERVAL
+
+    async def _request_with_retry(
+        self,
+        url: str,
+        *,
+        max_retries: int = MAX_RETRIES,
+        save_raw: bool = False,
+        raw_subdir: str = "",
+        raw_filename: str = "",
+    ) -> dict[str, Any]:
+        """Perform HTTP GET with infinite retries on network errors, 10-second intervals."""
+        await self._ensure_session()
+        await self._rate_limit()
+
+        assert self._session is not None
+        attempt = 0
+
+        while not self._shutdown_requested:
             try:
+                self._check_shutdown()
+                await self._rate_limit()
+
                 async with self._session.get(url) as response:
                     if response.status == 200:
                         content = await response.read()
@@ -170,7 +252,8 @@ class SECClient:
                             },
                         )
                         if attempt < max_retries:
-                            await asyncio.sleep(delay)
+                            await self._wait_with_shutdown_check(delay)
+                            attempt += 1
                             continue
                         raise SECRateLimitError(
                             f"Rate limit exceeded after {max_retries} retries"
@@ -188,7 +271,8 @@ class SECClient:
                             },
                         )
                         if attempt < max_retries:
-                            await asyncio.sleep(delay)
+                            await self._wait_with_shutdown_check(delay)
+                            attempt += 1
                             continue
                         raise SECServerError(
                             f"Server error {response.status} after {max_retries} retries"
@@ -199,25 +283,54 @@ class SECClient:
                         raise SECClientError(f"HTTP {response.status}: {text[:200]}")
 
             except (TimeoutError, aiohttp.ClientError) as e:
-                last_error = e
-                delay = self._calculate_backoff(attempt)
                 logger.warning(
-                    "SEC request failed, retrying",
+                    "SEC request failed, will retry in 10 seconds",
                     extra={
                         "url": url,
                         "attempt": attempt,
-                        "delay": delay,
                         "error": str(e),
                     },
                 )
-                if attempt < max_retries:
-                    await asyncio.sleep(delay)
-                    continue
-                raise SECClientError(
-                    f"Request failed after {max_retries} retries: {last_error}"
-                ) from last_error
+                # Wait 10 seconds before retry (with shutdown check)
+                await self._wait_with_shutdown_check(NETWORK_RETRY_INTERVAL)
+                attempt += 1
+                continue
 
-        raise SECClientError(f"Unexpected error after retries: {last_error}")
+    async def _request(
+        self,
+        url: str,
+        *,
+        max_retries: int = MAX_RETRIES,
+        save_raw: bool = False,
+        raw_subdir: str = "",
+        raw_filename: str = "",
+    ) -> dict[str, Any]:
+        """Perform HTTP GET with retries, backoff, and rate limiting.
+
+        For 429/5xx/404: uses max_retries with exponential backoff.
+        For network errors: retries indefinitely with 10-second intervals.
+        """
+        return await self._request_with_retry(
+            url,
+            max_retries=max_retries,
+            save_raw=save_raw,
+            raw_subdir=raw_subdir,
+            raw_filename=raw_filename,
+        )
+
+    def _check_shutdown(self) -> None:
+        """Check if shutdown was requested and raise if so."""
+        if self._shutdown_requested:
+            raise asyncio.CancelledError("Shutdown requested")
+
+    async def _wait_with_shutdown_check(self, delay: float) -> None:
+        """Wait for delay seconds while checking for shutdown."""
+        waited = 0.0
+        while waited < delay:
+            if self._shutdown_requested:
+                raise asyncio.CancelledError("Shutdown requested during wait")
+            await asyncio.sleep(min(NETWORK_RETRY_INTERVAL, delay - waited))
+            waited += NETWORK_RETRY_INTERVAL
 
     async def _save_raw_response(
         self,
