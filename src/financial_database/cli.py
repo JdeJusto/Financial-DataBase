@@ -489,15 +489,15 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
     "--api-mode", is_flag=True, default=True, help="Use SEC API for ingestion (default)"
 )
 def sec_bulk_ingest(
-    database_url,
-    data_dir,
-    download,
-    checkpoint_file,
-    limit,
-    dry_run,
-    verbose,
-    confirm,
-    api_mode,
+    database_url: str | None,
+    data_dir: str | None,
+    download: bool,
+    checkpoint_file: str | None,
+    limit: int | None,
+    dry_run: bool,
+    verbose: bool,
+    confirm: bool,
+    api_mode: bool,
 ):
     """Full historical SEC EDGAR bulk ingestion using companyfacts.zip and submissions.zip.
 
