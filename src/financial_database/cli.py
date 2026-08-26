@@ -510,6 +510,11 @@ def sec_bulk_ingest(
     else:
         logging.basicConfig(level=logging.INFO)
 
+    if limit is not None and limit <= 0:
+        raise click.ClickException(
+            "--limit must be a positive integer greater than 0"
+        )
+
     if limit is None and not confirm and not dry_run:
         raise click.ClickException(
             "Bulk ingestion processes thousands of companies and takes hours. "
