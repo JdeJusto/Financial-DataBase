@@ -3,7 +3,6 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple, Union
 
 from financial_database.providers.sec.models import (
     ExchangeMapping,

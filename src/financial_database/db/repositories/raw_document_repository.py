@@ -4,8 +4,8 @@ Metadata references to preserved raw data files.
 """
 
 import json
+
 import psycopg
-from typing import Any
 
 
 class RawDocumentRepository:

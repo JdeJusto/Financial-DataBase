@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any, Self
 from urllib.parse import urljoin
 
+import aiofiles
 import aiohttp
+from aiohttp import ClientResponseError
 
 from financial_database.providers.sec.models import (
     SECCompany,
@@ -28,7 +30,8 @@ logger = logging.getLogger(__name__)
 SEC_BASE_URL = "https://www.sec.gov"
 SEC_DATA_BASE_URL = "https://data.sec.gov"
 SEC_SUBMISSIONS_URL = f"{SEC_DATA_BASE_URL}/api/xbrl/companyfacts/"
-SEC_COMPANY_TICKERS_URL = f"{SEC_BASE_URL}/files/company_tickers_exchange.json"
+# Allow overriding the company tickers URL for testing (e.g., to use a filtered list)
+SEC_COMPANY_TICKERS_URL = os.environ.get("SEC_CUSTOM_TICKERS_URL", f"{SEC_BASE_URL}/files/company_tickers_exchange.json")
 SEC_SUBMISSIONS_PATH = "/submissions/CIK{}.json"
 SEC_COMPANYFACTS_PATH = "/api/xbrl/companyfacts/CIK{}.json"
 
@@ -67,6 +70,7 @@ class SECClient:
         user_agent: str | None = None,
         raw_dir: Path | None = None,
         timeout: aiohttp.ClientTimeout | None = None,
+        max_retries: int = 5,
     ):
         self._user_agent = user_agent or os.environ.get("SEC_USER_AGENT")
         if not self._user_agent:
@@ -77,6 +81,7 @@ class SECClient:
             raw_dir or Path(os.environ.get("DATA_RAW_DIR", "./data/raw")) / "sec"
         )
         self._timeout = timeout or DEFAULT_TIMEOUT
+        self._max_retries = max_retries
         self._session: aiohttp.ClientSession | None = None
         self._last_request_time = 0.0
         self._rate_limit_lock = asyncio.Lock()
@@ -275,24 +280,73 @@ class SECClient:
                         raise SECClientError(f"HTTP {response.status}: {text[:200]}")
 
             except (TimeoutError, aiohttp.ClientError) as e:
-                logger.warning(
-                    "SEC request failed, will retry in 10 seconds",
-                    extra={
-                        "url": url,
-                        "attempt": attempt,
-                        "error": str(e),
-                    },
-                )
-                # Wait 10 seconds before retry (with shutdown check)
-                await self._wait_with_shutdown_check(NETWORK_RETRY_INTERVAL)
-                attempt += 1
-                continue
+                # Handle ClientResponseError (includes HTTP error statuses) specially
+                if isinstance(e, ClientResponseError):
+                    status = e.status
+                    if status == 404:
+                        raise SECNotFoundError(f"Resource not found: {url}")
+                    elif status == 429:
+                        retry_after = e.headers.get("Retry-After")
+                        delay = self._calculate_backoff(
+                            attempt, int(retry_after) if retry_after else None
+                        )
+                        logger.warning(
+                            "SEC rate limit hit, backing off",
+                            extra={
+                                "url": url,
+                                "attempt": attempt,
+                                "delay": delay,
+                                "retry_after": retry_after,
+                            },
+                        )
+                        if attempt < max_retries:
+                            await self._wait_with_shutdown_check(delay)
+                            attempt += 1
+                            continue
+                        raise SECRateLimitError(
+                            f"Rate limit exceeded after {max_retries} retries"
+                        )
+                    elif 500 <= status < 600:
+                        delay = self._calculate_backoff(attempt)
+                        logger.warning(
+                            "SEC server error, retrying",
+                            extra={
+                                "url": url,
+                                "status": status,
+                                "attempt": attempt,
+                                "delay": delay,
+                            },
+                        )
+                        if attempt < max_retries:
+                            await self._wait_with_shutdown_check(delay)
+                            attempt += 1
+                            continue
+                        raise SECServerError(
+                            f"Server error {status} after {max_retries} retries"
+                        )
+                    else:
+                        # 4xx errors (except 429) and other status codes
+                        raise SECClientError(f"HTTP {status}: {e.message}")
+                else:
+                    # Network errors (timeout, connection errors, etc.)
+                    logger.warning(
+                        "SEC request failed, will retry in 10 seconds",
+                        extra={
+                            "url": url,
+                            "attempt": attempt,
+                            "error": str(e),
+                        },
+                    )
+                    # Wait 10 seconds before retry (with shutdown check)
+                    await self._wait_with_shutdown_check(NETWORK_RETRY_INTERVAL)
+                    attempt += 1
+                    continue
 
     async def _request(
         self,
         url: str,
         *,
-        max_retries: int = MAX_RETRIES,
+        max_retries: int | None = None,
         save_raw: bool = False,
         raw_subdir: str = "",
         raw_filename: str = "",
@@ -302,6 +356,8 @@ class SECClient:
         For 429/5xx/404: uses max_retries with exponential backoff.
         For network errors: retries indefinitely with 10-second intervals.
         """
+        if max_retries is None:
+            max_retries = self._max_retries
         return await self._request_with_retry(
             url,
             max_retries=max_retries,
@@ -365,29 +421,59 @@ class SECClient:
     async def get_company_tickers(self) -> list[SECCompany]:
         """Fetch SEC company tickers exchange reference data."""
         logger.info("Fetching SEC company tickers")
-        data = await self._request(
-            SEC_COMPANY_TICKERS_URL,
-            save_raw=True,
-            raw_subdir="reference",
-            raw_filename="company_tickers_exchange.json",
-        )
+
+        # Check if the URL is a local file
+        if SEC_COMPANY_TICKERS_URL.startswith(('/', 'file://')):
+            # Local file path
+            file_path = SEC_COMPANY_TICKERS_URL
+            file_path = file_path.removeprefix('file://')  # Remove 'file://' prefix
+            try:
+                async with aiofiles.open(file_path, 'r') as f:
+                    content = await f.read()
+                data = json.loads(content)
+                logger.info(
+                    "Loaded company tickers from local file",
+                    extra={"file": file_path, "size": len(content)},
+                )
+            except (OSError, json.JSONDecodeError) as e:
+                logger.error(
+                    "Failed to load company tickers from local file",
+                    extra={"file": file_path, "error": str(e)},
+                )
+                raise SECClientError(f"Failed to load local file {file_path}: {e}")
+        else:
+            # Remote URL
+            data = await self._request(
+                SEC_COMPANY_TICKERS_URL,
+                save_raw=True,
+                raw_subdir="reference",
+                raw_filename="company_tickers_exchange.json",
+            )
 
         companies = []
         for item in data.get("data", []):
             # data format: [cik, name, ticker, exchange, sic, sic_description, owner_org]
-            if len(item) >= 3:
-                cik = str(item[0]).zfill(10)
-                companies.append(
-                    SECCompany(
-                        cik=cik,
-                        name=item[1],
-                        ticker=item[2] if item[2] else None,
-                        exchange=item[3] if len(item) > 3 and item[3] else None,
-                        sic=item[4] if len(item) > 4 and item[4] else None,
-                        sic_description=item[5] if len(item) > 5 and item[5] else None,
-                        owner_org=item[6] if len(item) > 6 and item[6] else None,
-                    )
+            # Skip None items or items with insufficient data
+            if item is None or len(item) < 3:
+                continue
+
+            # Validate that CIK is numeric (contains only digits)
+            cik_str = str(item[0])
+            if not cik_str.isdigit():
+                continue
+
+            cik = cik_str.zfill(10)
+            companies.append(
+                SECCompany(
+                    cik=cik,
+                    name=item[1],
+                    ticker=item[2] if item[2] else None,
+                    exchange=item[3] if len(item) > 3 and item[3] else None,
+                    sic=item[4] if len(item) > 4 and item[4] else None,
+                    sic_description=item[5] if len(item) > 5 and item[5] else None,
+                    owner_org=item[6] if len(item) > 6 and item[6] else None,
                 )
+            )
 
         logger.info("Fetched SEC companies", extra={"count": len(companies)})
         return companies

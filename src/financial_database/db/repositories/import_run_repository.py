@@ -4,9 +4,9 @@ Audit metadata for import pipelines.
 Tracks provenance of data loading operations.
 """
 
-import json
-import psycopg
 from typing import Any
+
+import psycopg
 
 
 class ImportRunRepository:

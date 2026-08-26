@@ -3,8 +3,9 @@
 Handles all database operations for the companies table.
 """
 
-import psycopg
 from typing import Any
+
+import psycopg
 
 
 class CompanyRepository:

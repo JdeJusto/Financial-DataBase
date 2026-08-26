@@ -4,6 +4,8 @@ Handles historical prices per listing per provider.
 Uses NUMERIC type for precision, not FLOAT.
 """
 
+import psycopg
+
 
 class PriceRepository:
     """Repository for prices table."""

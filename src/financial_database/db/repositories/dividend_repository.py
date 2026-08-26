@@ -3,8 +3,9 @@
 Handles dividend payments per listing per provider.
 """
 
-import psycopg
 from typing import Any
+
+import psycopg
 
 
 class DividendRepository:

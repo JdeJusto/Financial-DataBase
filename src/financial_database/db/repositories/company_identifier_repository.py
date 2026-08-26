@@ -3,8 +3,9 @@
 Handles ticker, CIK, ISIN, LEI and provider-specific identifiers.
 """
 
-import psycopg
 from typing import Any
+
+import psycopg
 
 
 class CompanyIdentifierRepository:

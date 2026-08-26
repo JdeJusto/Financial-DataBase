@@ -3,8 +3,9 @@
 Connects company + exchange + ticker with historical validity.
 """
 
-import psycopg
 from typing import Any
+
+import psycopg
 
 
 class CompanyListingRepository:

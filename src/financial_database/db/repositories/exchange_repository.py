@@ -3,8 +3,8 @@
 Handles exchanges where companies list.
 """
 
+
 import psycopg
-from typing import Any
 
 
 class ExchangeRepository:

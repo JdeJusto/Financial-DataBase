@@ -26,6 +26,7 @@ images/
 
 # Data
 data/raw/
+stress_test.log
 
 # GitHub
 /.github/workflows/*.yml

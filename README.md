@@ -169,6 +169,6 @@ python -m pytest tests/unit/test_sec_*.py
 2. Add your DDL statements
 3. The migration system will automatically apply new migrations
 
-## License
+## Disclaimer
 
-This project is licensed under the MIT License.
+This project was developed with the assistance of AI tools for debugging, error detection, and code optimization. While AI assistance was used, all code has been reviewed, tested, and verified by human developers to ensure correctness and quality.

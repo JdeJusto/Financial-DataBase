@@ -3,8 +3,9 @@
 Handles SEC and other provider filings.
 """
 
-import psycopg
 from typing import Any
+
+import psycopg
 
 
 class FilingRepository:
