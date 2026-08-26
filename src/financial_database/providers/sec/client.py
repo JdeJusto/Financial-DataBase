@@ -149,8 +149,8 @@ class SECClient:
     async def _rate_limit(self) -> None:
         """Enforce minimum delay between requests."""
         async with self._rate_limit_lock:
-            now = time.monotonic()
-            elapsed = now - self._last_request_time
+            now: float = time.monotonic()
+            elapsed: float = now - self._last_request_time
             if elapsed < RATE_LIMIT_DELAY:
                 await asyncio.sleep(RATE_LIMIT_DELAY - elapsed)
             self._last_request_time = time.monotonic()
@@ -159,7 +159,7 @@ class SECClient:
         """Calculate exponential backoff delay."""
         if retry_after is not None:
             return min(float(retry_after), MAX_DELAY)
-        delay = BASE_DELAY * (2**attempt)
+        delay: float = BASE_DELAY * (2**attempt)
         return min(delay, MAX_DELAY)
 
     async def _request(
@@ -174,14 +174,6 @@ class SECClient:
         """Perform HTTP GET with retries, backoff, and rate limiting."""
         await self._ensure_session()
         await self._rate_limit()
-
-        self._session: aiohttp.ClientSession | None = None
-        self._last_request_time = 0.0
-        self._rate_limit_lock = asyncio.Lock()
-
-        # Graceful shutdown state
-        self._shutdown_requested = False
-        self._shutdown_event = asyncio.Event()
 
         # Ensure raw directories exist
         for subdir in ["submissions", "companyfacts", "reference"]:

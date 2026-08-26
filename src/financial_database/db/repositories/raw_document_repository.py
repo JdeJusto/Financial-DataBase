@@ -4,12 +4,14 @@ Metadata references to preserved raw data files.
 """
 
 import json
+import psycopg
+from typing import Any
 
 
 class RawDocumentRepository:
     """Repository for raw_documents table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(

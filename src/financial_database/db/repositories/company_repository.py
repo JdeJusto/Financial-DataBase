@@ -3,11 +3,14 @@
 Handles all database operations for the companies table.
 """
 
+import psycopg
+from typing import Any
+
 
 class CompanyRepository:
     """Repository for companies table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(
@@ -18,7 +21,7 @@ class CompanyRepository:
         industry: str | None = None,
         currency: str | None = None,
         website: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a new company."""
         with self.conn.cursor() as cur:
             cur.execute(

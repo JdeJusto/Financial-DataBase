@@ -3,7 +3,7 @@
 import logging
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -64,9 +64,9 @@ class ImportStats:
     facts_skipped: int = 0
     facts_validation_errors: int = 0
     raw_documents_created: int = 0
-    errors: list[dict[str, Any]] = None  # type: ignore
+    errors: list[dict[str, Any]] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.errors is None:
             self.errors = []
 

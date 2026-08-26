@@ -8,7 +8,7 @@ Uses NUMERIC type for precision, not FLOAT.
 class PriceRepository:
     """Repository for prices table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(

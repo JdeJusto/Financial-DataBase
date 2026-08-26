@@ -4,14 +4,18 @@ Audit metadata for import pipelines.
 Tracks provenance of data loading operations.
 """
 
+import json
+import psycopg
+from typing import Any
+
 
 class ImportRunRepository:
     """Repository for import_runs table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
-    def create(self, provider_id: str, pipeline: str, status: str = "running") -> dict:
+    def create(self, provider_id: str, pipeline: str, status: str = "running") -> dict[str, Any]:
         """Create a new import run record."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -32,7 +36,7 @@ class ImportRunRepository:
         records_inserted: int | None = None,
         records_updated: int | None = None,
         records_skipped: int | None = None,
-        errors: dict | None = None,
+        errors: dict[str, Any] | None = None,
         finished_at=None,
         duration_seconds: int | None = None,
     ) -> None:

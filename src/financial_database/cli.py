@@ -214,6 +214,13 @@ def sec_universe(database_url, dry_run):
 @click.option("--dry-run", is_flag=True, help="Fetch data but don't write to database")
 def sec_submissions(cik, database_url, dry_run):
     """Import SEC submissions (filings) for a specific CIK."""
+    # Validate CIK format
+    if not cik.isdigit():
+        raise click.ClickException("CIK must contain only digits")
+    # Normalize CIK to 10 digits (this will be done later anyway, but validate early)
+    normalized_cik = cik.zfill(10)
+    if len(normalized_cik) > 10:
+        raise click.ClickException("CIK cannot be more than 10 digits")
     from financial_database.providers.sec import SECClient, SECImporter
 
     user_agent = _get_user_agent()
@@ -260,6 +267,13 @@ def sec_submissions(cik, database_url, dry_run):
 @click.option("--dry-run", is_flag=True, help="Fetch data but don't write to database")
 def sec_companyfacts(cik, database_url, dry_run):
     """Import SEC CompanyFacts (XBRL financial facts) for a specific CIK."""
+    # Validate CIK format
+    if not cik.isdigit():
+        raise click.ClickException("CIK must contain only digits")
+    # Normalize CIK to 10 digits (this will be done later anyway, but validate early)
+    normalized_cik = cik.zfill(10)
+    if len(normalized_cik) > 10:
+        raise click.ClickException("CIK cannot be more than 10 digits")
     from financial_database.providers.sec import SECClient, SECImporter
 
     user_agent = _get_user_agent()
@@ -314,6 +328,13 @@ def sec_companyfacts(cik, database_url, dry_run):
 @click.option("--dry-run", is_flag=True, help="Fetch data but don't write to database")
 def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
     """Full sync for a single company: universe + submissions + companyfacts."""
+    # Validate CIK format
+    if not cik.isdigit():
+        raise click.ClickException("CIK must contain only digits")
+    # Normalize CIK to 10 digits (this will be done later anyway, but validate early)
+    normalized_cik = cik.zfill(10)
+    if len(normalized_cik) > 10:
+        raise click.ClickException("CIK cannot be more than 10 digits")
     from financial_database.providers.sec import SECClient, SECImporter
 
     user_agent = _get_user_agent()

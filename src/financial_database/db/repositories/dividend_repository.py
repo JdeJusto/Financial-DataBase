@@ -3,11 +3,14 @@
 Handles dividend payments per listing per provider.
 """
 
+import psycopg
+from typing import Any
+
 
 class DividendRepository:
     """Repository for dividends table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(
@@ -20,7 +23,7 @@ class DividendRepository:
         currency: str = "USD",
         provider_id: str = "",
         source_id: str = "",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Create a new dividend record."""
         with self.conn.cursor() as cur:
             cur.execute(

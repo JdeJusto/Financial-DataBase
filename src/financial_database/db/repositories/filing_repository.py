@@ -3,11 +3,14 @@
 Handles SEC and other provider filings.
 """
 
+import psycopg
+from typing import Any
+
 
 class FilingRepository:
     """Repository for filings table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(
@@ -25,7 +28,7 @@ class FilingRepository:
         raw_document_id: str | None = None,
         is_amended: bool = False,
         amended_by_filing_id: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Create a new filing."""
         with self.conn.cursor() as cur:
             cur.execute(

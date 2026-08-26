@@ -78,7 +78,7 @@ class BulkImportStats:
     raw_documents_created: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.errors is None:
             self.errors = []
 
@@ -159,9 +159,9 @@ class SECBulkIngester:
 
     def __init__(
         self,
-        conn,
-        client,
-        parser,
+        conn: psycopg.Connection,
+        client: SECClient,
+        parser: SECParser,
         raw_dir: Path,
         checkpoint_dir: Path | None = None,
         batch_size: int = 100,
@@ -193,7 +193,7 @@ class SECBulkIngester:
 
     def _compute_file_checksum(self, file_path: Path) -> str:
         """Compute SHA256 checksum of a file."""
-        sha256 = hashlib.sha256()
+        sha256: hashlib._Hash = hashlib.sha256()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(8192), b""):
                 sha256.update(chunk)
@@ -201,7 +201,7 @@ class SECBulkIngester:
 
     def _compute_dir_checksum(self, dir_path: Path) -> str:
         """Compute SHA256 checksum of all files in a directory (sorted by name)."""
-        sha256 = hashlib.sha256()
+        sha256: hashlib._Hash = hashlib.sha256()
         for file_path in sorted(dir_path.rglob("*")):
             if file_path.is_file():
                 with open(file_path, "rb") as f:
@@ -1136,15 +1136,21 @@ class SECBulkIngester:
 
             facts_processed += len(chunk)
 
-            # Periodic checkpointing based on time interval
+            # Periodic checkpointing based on time interval OR fact count
             current_time = time.monotonic()
-            if current_time - checkpoint_timer >= CHECKPOINT_INTERVAL_SECONDS:
+            time_checkpoint = current_time - checkpoint_timer >= CHECKPOINT_INTERVAL_SECONDS
+            count_checkpoint = facts_processed % 500 == 0  # Every 500 facts as per README
+
+            if time_checkpoint or count_checkpoint:
                 logger.debug(
-                    "Periodic checkpoint during company processing",
+                    "Checkpoint during company processing",
                     extra={
                         "cik": cik,
                         "facts_processed": facts_processed,
                         "facts_total": facts_total,
+                        "trigger": "time" if time_checkpoint and not count_checkpoint
+                                else "count" if count_checkpoint and not time_checkpoint
+                                else "both",
                     },
                 )
                 # The transaction above commits automatically on exit

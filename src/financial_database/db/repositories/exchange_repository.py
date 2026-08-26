@@ -3,11 +3,14 @@
 Handles exchanges where companies list.
 """
 
+import psycopg
+from typing import Any
+
 
 class ExchangeRepository:
     """Repository for exchanges table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(

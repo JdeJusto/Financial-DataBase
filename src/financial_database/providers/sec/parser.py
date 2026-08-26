@@ -1,8 +1,9 @@
 """SEC EDGAR parser for normalizing raw SEC data into domain models."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from financial_database.providers.sec.models import (
     ExchangeMapping,
@@ -29,14 +30,8 @@ class ParsedCompany:
     currency: str = "USD"
     website: str | None = None
     is_active: bool = True
-    identifiers: dict[str, str] = None  # type: ignore
-    listings: list["ParsedListing"] = None  # type: ignore
-
-    def __post_init__(self):
-        if self.identifiers is None:
-            self.identifiers = {}
-        if self.listings is None:
-            self.listings = []
+    identifiers: dict[str, str] = field(default_factory=dict)
+    listings: list["ParsedListing"] = field(default_factory=list)
 
 
 @dataclass
@@ -96,7 +91,7 @@ class ParsedFinancialFact:
 class SECParser:
     """Parse and normalize SEC data into domain models."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._exchange_cache: dict[str, ExchangeMapping | None] = {}
 
     def parse_company(self, sec_company: SECCompany) -> ParsedCompany:
@@ -140,7 +135,7 @@ class SECParser:
 
     def parse_filings(self, submissions: SECSubmissions) -> list[ParsedFiling]:
         """Parse SEC submissions into normalized filings."""
-        parsed_filings = []
+        parsed_filings: list[ParsedFiling] = []
         for filing in submissions.filings:
             # Only process financial reporting forms
             if not self._is_financial_form(filing.form):

@@ -3,11 +3,14 @@
 Connects company + exchange + ticker with historical validity.
 """
 
+import psycopg
+from typing import Any
+
 
 class CompanyListingRepository:
     """Repository for company_listings table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(
@@ -19,7 +22,7 @@ class CompanyListingRepository:
         listing_date: str | None = None,
         delisting_date: str | None = None,
         is_primary: bool = False,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Create a new company listing."""
         with self.conn.cursor() as cur:
             cur.execute(

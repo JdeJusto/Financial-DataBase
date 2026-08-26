@@ -4,18 +4,22 @@ The most important table - normalized financial facts
 with full provenance and restatement support.
 """
 
+from typing import Any
+
+import psycopg
+
 
 class FinancialFactRepository:
     """Repository for financial_facts table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(
         self,
         company_id: str,
         concept: str,
-        value,
+        value: Any,
         unit: str,
         period_start: str | None,
         period_end: str,
@@ -28,7 +32,7 @@ class FinancialFactRepository:
         filing_date: str | None = None,
         namespace: str | None = None,
         frame: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a new financial fact."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -58,7 +62,7 @@ class FinancialFactRepository:
             )
             return cur.fetchone()
 
-    def get_by_company_id(self, company_id: str) -> list[dict]:
+    def get_by_company_id(self, company_id: str) -> list[dict[str, Any]]:
         """Get all financial facts for a company."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -70,7 +74,7 @@ class FinancialFactRepository:
             )
             return [dict(row) for row in cur.fetchall()]
 
-    def get_by_concept(self, company_id: str, concept: str) -> list[dict]:
+    def get_by_concept(self, company_id: str, concept: str) -> list[dict[str, Any]]:
         """Get all observations of a specific concept for a company."""
         with self.conn.cursor() as cur:
             cur.execute(

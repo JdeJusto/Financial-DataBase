@@ -3,11 +3,14 @@
 Handles ticker, CIK, ISIN, LEI and provider-specific identifiers.
 """
 
+import psycopg
+from typing import Any
+
 
 class CompanyIdentifierRepository:
     """Repository for company_identifiers table."""
 
-    def __init__(self, conn):
+    def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
     def create(
@@ -19,7 +22,7 @@ class CompanyIdentifierRepository:
         is_primary: bool = False,
         valid_from: str | None = None,
         valid_to: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Insert a new identifier."""
         with self.conn.cursor() as cur:
             cur.execute(
