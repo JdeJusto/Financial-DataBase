@@ -56,9 +56,6 @@ SEC_COMPANY_TICKERS_JSON_URL = "https://www.sec.gov/files/company_tickers.json"
 FACTS_PER_TRANSACTION = 500  # Number of facts per database transaction
 CHECKPOINT_INTERVAL_SECONDS = 30.0  # Checkpoint interval in seconds
 
-# Alternative working URL for company tickers
-SEC_COMPANY_TICKERS_JSON_URL = "https://www.sec.gov/files/company_tickers.json"
-
 
 @dataclass
 class BulkImportStats:
@@ -186,25 +183,6 @@ class SECBulkIngester:
         self.facts = FinancialFactRepository(conn)
         self.raw_docs = RawDocumentRepository(conn)
         self.import_runs = ImportRunRepository(conn)
-
-        self._raw_dir = Path(client._raw_dir)
-        self.checkpoint_dir = Path(checkpoint_dir or "./data/checkpoints/sec_bulk")
-        self.batch_size = 100
-
-        # Repositories
-
-        self.companies = CompanyRepository(conn)
-        self.identifiers = CompanyIdentifierRepository(conn)
-        self.listings = CompanyListingRepository(conn)
-        self.exchanges = ExchangeRepository(conn)
-        self.filings = FilingRepository(conn)
-        self.facts = FinancialFactRepository(conn)
-        self.raw_docs = RawDocumentRepository(conn)
-        self.import_runs = ImportRunRepository(conn)
-
-        self._raw_dir = Path(client._raw_dir)
-        self.checkpoint_dir = Path(checkpoint_dir or "./data/checkpoints/sec_bulk")
-        self.batch_size = 100
 
         # Provider ID (cached)
         self._provider_id: uuid.UUID | None = None
