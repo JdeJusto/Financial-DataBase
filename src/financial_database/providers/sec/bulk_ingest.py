@@ -28,6 +28,7 @@ from financial_database.db.repositories import (
     RawDocumentRepository,
 )
 from financial_database.providers.sec.client import (
+    SEC_COMPANY_TICKERS_URL,
     SECClient,
     SECNotFoundError,
 )
@@ -1314,6 +1315,7 @@ class SECBulkIngester:
         checkpoint: BulkImportCheckpoint | None = None,
         limit: int | None = None,
         delay_between_requests: float = 0.1,
+        force: bool = False,
     ) -> BulkImportStats:
         """
         Ingest full SEC universe using API-based approach.
@@ -1325,23 +1327,50 @@ class SECBulkIngester:
 
         This replaces the bulk ZIP file approach since SEC no longer provides
         companyfacts.zip and submissions.zip at the old URLs.
+
+        When ``force`` is True, any previous checkpoint progress is ignored and
+        ingestion restarts from the beginning of the company universe.
         """
         stats = BulkImportStats()
         provider_id = self._get_provider_id()
+
+        # The tickers source identifies the company universe. A checkpoint saved
+        # against a different source (e.g., a filtered test universe) must not
+        # skip companies belonging to the current source.
+        source = SEC_COMPANY_TICKERS_URL
 
         # Load or create checkpoint
         if checkpoint is None:
             checkpoint = BulkImportCheckpoint(
                 dataset="full_universe",
                 provider=self.SEC_PROVIDER_NAME,
+                source_file=source,
             )
             loaded = self._load_checkpoint("full_universe")
-            if loaded:
+            # Reuse prior progress only when it belongs to the same source.
+            if loaded and not force and loaded.source_file == source:
                 checkpoint = loaded
+
+        # A stale checkpoint (e.g., from a different company universe) can cause
+        # every company to be skipped. ``force`` explicitly resets prior progress.
+        if force:
+            checkpoint.last_processed_cik = None
+            checkpoint.companies_processed = 0
+            checkpoint.facts_processed = 0
+            checkpoint.filings_processed = 0
 
         # Update checkpoint with current info
         checkpoint.provider = self.SEC_PROVIDER_NAME
-        checkpoint.source_file = "api://data.sec.gov"
+        checkpoint.source_file = source
+
+        if checkpoint.last_processed_cik is None:
+            # Fresh start: persist an empty checkpoint so any stale progress
+            # left on disk is cleared before processing begins.
+            self._save_checkpoint(checkpoint)
+            logger.info(
+                "Fresh start: no reusable checkpoint for current source",
+                extra={"source": source},
+            )
 
         logger.info(
             "Starting full universe ingestion via API",

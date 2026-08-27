@@ -507,6 +507,9 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
     "--confirm", is_flag=True, help="Confirm bulk ingestion (required for full run)"
 )
 @click.option(
+    "--force", is_flag=True, help="Ignore previous checkpoint and start from scratch"
+)
+@click.option(
     "--api-mode", is_flag=True, default=True, help="Use SEC API for ingestion (default)"
 )
 def sec_bulk_ingest(
@@ -518,6 +521,7 @@ def sec_bulk_ingest(
     dry_run: bool,
     verbose: bool,
     confirm: bool,
+    force: bool,
     api_mode: bool,
 ):
     """Full historical SEC EDGAR bulk ingestion using companyfacts.zip and submissions.zip.
@@ -549,6 +553,25 @@ def sec_bulk_ingest(
         )
         print(f"   Limit: {limit or 'none (all companies)'}")
         print(f"   Download: {'yes' if download else 'no'}")
+        print(f"   Force (ignore checkpoint): {'yes' if force else 'no'}")
+
+        from financial_database.providers.sec import SECClient
+
+        user_agent = _get_user_agent()
+        raw_dir = _get_raw_dir()
+        client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
+        try:
+            companies = asyncio.run(client.get_company_tickers())
+            total = len(companies)
+            if limit and limit > 0:
+                companies = companies[:limit]
+            print(f"   Companies loaded: {len(companies)} (of {total} total)")
+            for c in companies[:5]:
+                print(
+                    f"   - {c.cik}: {c.name} ({c.ticker or 'no ticker'}) on {c.exchange or 'no exchange'}"
+                )
+        finally:
+            asyncio.run(client.close())
         return
 
     # Get database connection URL
@@ -572,15 +595,18 @@ def sec_bulk_ingest(
         )
     )
 
-    # Load checkpoint if provided
+    # Load checkpoint if provided (skipped when --force is set)
     checkpoint = None
-    if checkpoint_file and Path(checkpoint_file).exists():
+    if checkpoint_file and Path(checkpoint_file).exists() and not force:
         print(f"📌 Loading checkpoint from {checkpoint_file}")
         with open(checkpoint_file) as f:
             data = json.load(f)
         checkpoint = BulkImportCheckpoint.from_dict(data)
         print(f"   Resuming from CIK: {checkpoint.last_processed_cik or 'beginning'}")
         print(f"   Companies processed so far: {checkpoint.companies_processed}")
+
+    if force:
+        print("🔄 Force flag set: ignoring previous checkpoint progress")
 
     async def run_with_signals():
         # Install signal handlers for graceful shutdown
@@ -590,6 +616,7 @@ def sec_bulk_ingest(
             checkpoint=checkpoint,
             limit=limit,
             delay_between_requests=0.1,
+            force=force,
         )
 
     try:

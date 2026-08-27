@@ -66,7 +66,8 @@ def test_filings_table_structure(db_session):
 
     assert "period_end" in column_dict
     assert column_dict["period_end"]["type"] == "date"
-    assert column_dict["period_end"]["nullable"] == "NO"
+    # Nullable since migration 0017: SEC may omit period_of_report
+    assert column_dict["period_end"]["nullable"] == "YES"
 
     assert "fiscal_year" in column_dict
     assert column_dict["fiscal_year"]["type"] == "integer"

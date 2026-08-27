@@ -103,8 +103,8 @@ def test_insert_exchange(db_session):
     result = db_session.execute(
         text(insert_sql),
         {
-            "code": "NASDAQ",
-            "name": "National Association of Securities Dealers Automated Quotations",
+            "code": "TESTX",
+            "name": "Test Exchange",
             "country": "USA",
             "timezone": "America/New_York",
             "currency": "USD",
@@ -125,10 +125,8 @@ def test_insert_exchange(db_session):
     exchange = result.fetchone()
 
     assert exchange is not None
-    assert exchange[0] == "NASDAQ"
-    assert (
-        exchange[1] == "National Association of Securities Dealers Automated Quotations"
-    )
+    assert exchange[0] == "TESTX"
+    assert exchange[1] == "Test Exchange"
     assert exchange[2] == "USA"
     assert exchange[3] == "America/New_York"
     assert exchange[4] == "USD"
