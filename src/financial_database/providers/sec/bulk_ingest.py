@@ -1260,7 +1260,7 @@ class SECBulkIngester:
             namespace_dict = {}
             for concept_name, concept_data in concepts.items():
                 values = []
-                for unit_data in concept_data.get("units", {}).values():
+                for unit, unit_data in concept_data.get("units", {}).items():
                     for val_data in unit_data:
                         # Parse dates
                         period_start = None
@@ -1282,6 +1282,7 @@ class SECBulkIngester:
                         values.append(
                             SECCompanyFactValue(
                                 value=val_data.get("val", 0),
+                                unit=unit,
                                 period_start=period_start,
                                 period_end=period_end or datetime.now(UTC).date(),
                                 fiscal_year=val_data.get("fy"),
@@ -1502,7 +1503,7 @@ class SECBulkIngester:
                             # Group values by unit
                             units_dict = {}
                             for v in fact.values:
-                                unit = v.metadata.get("unit", fact.unit or "USD")
+                                unit = v.unit or fact.unit or "USD"
                                 if unit not in units_dict:
                                     units_dict[unit] = []
                                 units_dict[unit].append(

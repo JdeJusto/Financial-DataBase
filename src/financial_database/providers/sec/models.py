@@ -80,6 +80,7 @@ class SECCompanyFactValue:
     value: int | float
     period_start: date | None
     period_end: date
+    unit: str | None = None
     fiscal_year: int | None = None
     fiscal_period: str | None = None
     form: str | None = None

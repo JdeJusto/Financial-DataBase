@@ -262,9 +262,82 @@ class TestGetCompanyTickers:
                 assert companies[0].cik == "0000320193"
 
 
+class TestGetCompanyFacts:
+    """Test get_company_facts method."""
+
+    @pytest.mark.asyncio
+    async def test_get_company_facts_captures_units(self, sec_client):
+        """The units dict key (USD, shares, USD/shares) must be preserved."""
+        mock_data = {
+            "cik": "0000320193",
+            "entityName": "Apple Inc.",
+            "facts": {
+                "us-gaap": {
+                    "Assets": {
+                        "label": "Assets",
+                        "units": {
+                            "USD": [
+                                {
+                                    "val": 352755000000,
+                                    "end": "2023-09-30",
+                                    "fy": 2023,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                    "filed": "2023-11-03",
+                                    "accn": "0000320193-23-000106",
+                                }
+                            ]
+                        },
+                    },
+                    "CommonStockSharesOutstanding": {
+                        "label": "Shares",
+                        "units": {
+                            "shares": [
+                                {
+                                    "val": 15500000000,
+                                    "end": "2023-09-30",
+                                    "fy": 2023,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                    "filed": "2023-11-03",
+                                    "accn": "0000320193-23-000106",
+                                }
+                            ]
+                        },
+                    },
+                    "EarningsPerShareBasic": {
+                        "label": "EPS",
+                        "units": {
+                            "USD/shares": [
+                                {
+                                    "val": 6.13,
+                                    "end": "2023-09-30",
+                                    "fy": 2023,
+                                    "fp": "FY",
+                                    "form": "10-K",
+                                    "filed": "2023-11-03",
+                                    "accn": "0000320193-23-000106",
+                                }
+                            ]
+                        },
+                    },
+                },
+            },
+        }
+
+        with patch.object(
+            sec_client, "_request", new_callable=AsyncMock, return_value=mock_data
+        ):
+            result = await sec_client.get_company_facts("0000320193")
+
+        us_gaap = result.facts["us-gaap"]
+        assert us_gaap["Assets"].values[0].unit == "USD"
+        assert us_gaap["CommonStockSharesOutstanding"].values[0].unit == "shares"
+        assert us_gaap["EarningsPerShareBasic"].values[0].unit == "USD/shares"
+
+
 class TestRequestWithRetry:
     """Test _request_with_retry method."""
-
     @pytest.mark.asyncio
     async def test_request_with_retry_success(self, sec_client, mock_aiohttp_session):
         """Test successful request."""

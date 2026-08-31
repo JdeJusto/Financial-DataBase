@@ -257,6 +257,97 @@ class TestSECParser:
         assert "us-gaap:Assets" in assets_duration.source_id
         assert "000032019323000106" in assets_duration.source_id
 
+    def test_parse_company_facts_preserves_value_unit(self, parser):
+        """Value-level unit (shares, USD/shares, pure) must override concept unit."""
+        facts = SECCompanyFacts(
+            cik="0000320193",
+            entity_name="Apple Inc.",
+            facts={
+                "us-gaap": {
+                    "CommonStockSharesOutstanding": SECCompanyFact(
+                        concept="CommonStockSharesOutstanding",
+                        namespace="us-gaap",
+                        unit="",  # SEC provides no concept-level unit
+                        values=[
+                            SECCompanyFactValue(
+                                value=15500000000,
+                                unit="shares",
+                                period_start=None,
+                                period_end=date(2023, 9, 30),
+                                fiscal_year=2023,
+                                fiscal_period="FY",
+                                form="10-K",
+                                filing_date=date(2023, 11, 3),
+                                accession_number="0000320193-23-000106",
+                                is_instant=True,
+                            ),
+                        ],
+                    ),
+                    "EarningsPerShareBasic": SECCompanyFact(
+                        concept="EarningsPerShareBasic",
+                        namespace="us-gaap",
+                        unit="",
+                        values=[
+                            SECCompanyFactValue(
+                                value=6.13,
+                                unit="USD/shares",
+                                period_start=date(2022, 10, 1),
+                                period_end=date(2023, 9, 30),
+                                fiscal_year=2023,
+                                fiscal_period="FY",
+                                form="10-K",
+                                filing_date=date(2023, 11, 3),
+                                accession_number="0000320193-23-000106",
+                                is_instant=False,
+                            ),
+                        ],
+                    ),
+                },
+            },
+        )
+
+        parsed = parser.parse_company_facts(facts, {})
+
+        assert len(parsed) == 2
+        shares = next(f for f in parsed if f.concept == "CommonStockSharesOutstanding")
+        eps = next(f for f in parsed if f.concept == "EarningsPerShareBasic")
+        assert shares.unit == "shares"
+        assert eps.unit == "USD/shares"
+
+    def test_parse_company_facts_defaults_unit_to_usd(self, parser):
+        """Facts with no unit anywhere fall back to USD."""
+        facts = SECCompanyFacts(
+            cik="0000320193",
+            entity_name="Apple Inc.",
+            facts={
+                "us-gaap": {
+                    "Revenue": SECCompanyFact(
+                        concept="Revenue",
+                        namespace="us-gaap",
+                        unit="",
+                        values=[
+                            SECCompanyFactValue(
+                                value=383285000000,
+                                unit=None,
+                                period_start=date(2022, 10, 1),
+                                period_end=date(2023, 9, 30),
+                                fiscal_year=2023,
+                                fiscal_period="FY",
+                                form="10-K",
+                                filing_date=date(2023, 11, 3),
+                                accession_number="0000320193-23-000106",
+                                is_instant=False,
+                            ),
+                        ],
+                    ),
+                },
+            },
+        )
+
+        parsed = parser.parse_company_facts(facts, {})
+        assert len(parsed) == 1
+        assert parsed[0].unit == "USD"
+
     def test_parse_company_facts_missing_fiscal_year_infers_from_period_end(
         self, parser
     ):

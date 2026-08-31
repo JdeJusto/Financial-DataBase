@@ -550,7 +550,7 @@ class SECClient:
             facts[namespace] = {}
             for concept_name, concept_data in concepts.items():
                 values = []
-                for unit_data in concept_data.get("units", {}).values():
+                for unit, unit_data in concept_data.get("units", {}).items():
                     for val_data in unit_data:
                         # Parse dates
                         period_start = None
@@ -572,6 +572,7 @@ class SECClient:
                         values.append(
                             SECCompanyFactValue(
                                 value=val_data.get("val", 0),
+                                unit=unit,
                                 period_start=period_start,
                                 period_end=period_end,
                                 fiscal_year=val_data.get("fy"),

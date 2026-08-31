@@ -234,7 +234,7 @@ class SECParser:
                         concept=concept_name,
                         namespace=namespace,
                         value=numeric_value,
-                        unit=fact.unit or value.metadata.get("unit", "USD"),
+                        unit=value.unit or fact.unit or "USD",
                         period_start=value.period_start
                         if not value.is_instant
                         else None,
