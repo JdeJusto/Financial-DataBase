@@ -64,7 +64,6 @@ SEC_COMPANY_TICKERS_JSON_URL = "https://www.sec.gov/files/company_tickers.json"
 # Configuration for periodic checkpointing and transaction chunking
 FACTS_PER_TRANSACTION = 500  # Number of facts per database transaction
 CHECKPOINT_INTERVAL_SECONDS = 30.0  # Checkpoint interval in seconds
-MAX_CONSECUTIVE_TRANSIENT_ERRORS = 20  # Abort after this many 429/5xx in a row
 
 
 @dataclass
@@ -1495,10 +1494,6 @@ class SECBulkIngester:
             f"Processing {len(companies)} companies (of {total_companies} total)"
         )
 
-        # Track consecutive transient SEC errors (429/5xx) to abort the run
-        # instead of silently skipping every company during an outage.
-        consecutive_transient_errors = 0
-
         # Process each company
         for company in companies:
             cik = company.normalized_cik
@@ -1508,7 +1503,6 @@ class SECBulkIngester:
                 logger.debug("Skipping already processed CIK", extra={"cik": cik})
                 continue
 
-            company_transient = False
 
             try:
                 logger.info(
@@ -1571,8 +1565,6 @@ class SECBulkIngester:
                         }
                     )
                 except (SECRateLimitError, SECServerError) as e:
-                    consecutive_transient_errors += 1
-                    company_transient = True
                     logger.warning(
                         "Transient SEC error (rate limit/server)",
                         extra={"cik": cik, "stage": "submissions", "error": str(e)},
@@ -1585,14 +1577,11 @@ class SECBulkIngester:
                             "transient": True,
                         }
                     )
-                    if (
-                        consecutive_transient_errors
-                        >= MAX_CONSECUTIVE_TRANSIENT_ERRORS
-                    ):
-                        raise SECBulkIngestAbort(
-                            f"Aborting after {consecutive_transient_errors} "
-                            "consecutive transient SEC errors"
-                        )
+                    # Abort without advancing the checkpoint so the company is
+                    # retried on resume rather than silently skipped.
+                    raise SECBulkIngestAbort(
+                        f"Transient SEC error for CIK {cik}: {e}"
+                    )
                 except (
                     aiohttp.ClientError,
                     ValueError,
@@ -1676,8 +1665,6 @@ class SECBulkIngester:
                         }
                     )
                 except (SECRateLimitError, SECServerError) as e:
-                    consecutive_transient_errors += 1
-                    company_transient = True
                     logger.warning(
                         "Transient SEC error (rate limit/server)",
                         extra={"cik": cik, "stage": "companyfacts", "error": str(e)},
@@ -1690,14 +1677,11 @@ class SECBulkIngester:
                             "transient": True,
                         }
                     )
-                    if (
-                        consecutive_transient_errors
-                        >= MAX_CONSECUTIVE_TRANSIENT_ERRORS
-                    ):
-                        raise SECBulkIngestAbort(
-                            f"Aborting after {consecutive_transient_errors} "
-                            "consecutive transient SEC errors"
-                        )
+                    # Abort without advancing the checkpoint so the company is
+                    # retried on resume rather than silently skipped.
+                    raise SECBulkIngestAbort(
+                        f"Transient SEC error for CIK {cik}: {e}"
+                    )
                 except (
                     aiohttp.ClientError,
                     ValueError,
@@ -1729,10 +1713,6 @@ class SECBulkIngester:
                 checkpoint.filings_processed = stats.filings_processed
                 self.conn.commit()
                 self._save_checkpoint(checkpoint)
-
-                # Reset the consecutive transient-error counter on success.
-                if not company_transient:
-                    consecutive_transient_errors = 0
 
                 # Rate limiting between companies
                 if delay_between_requests > 0:

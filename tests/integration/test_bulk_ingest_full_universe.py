@@ -376,8 +376,8 @@ class TestIngestFullUniverse:
         assert mock_record.call_count == 10
 
     @pytest.mark.asyncio
-    async def test_server_error_is_skipped_without_crashing(self, tmp_path):
-        """A 5xx/429 on companyfacts is recorded and the loop continues."""
+    async def test_transient_error_aborts_without_advancing_checkpoint(self, tmp_path):
+        """A 429/5xx aborts the run and does not mark the company processed."""
         ingester, client = _make_ingester(tmp_path)
         _configure_client(client, _five_companies())
         client.get_company_facts = AsyncMock(
@@ -393,36 +393,15 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_company_facts", new_callable=AsyncMock
             ),
-        ):
-            stats = await ingester.ingest_full_universe()
-
-        assert stats.companies_processed == 5
-        assert len(stats.errors) == 5
-        assert all(e.get("transient") for e in stats.errors)
-
-    @pytest.mark.asyncio
-    async def test_too_many_consecutive_transient_errors_aborts(self, tmp_path):
-        """Too many consecutive 429/5xx aborts instead of skipping forever."""
-        ingester, client = _make_ingester(tmp_path)
-        _configure_client(client, _five_companies())
-        client.get_submissions = AsyncMock(side_effect=SECServerError("Server error"))
-
-        with (
-            patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
-            patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
-            patch.object(
-                ingester, "_process_submissions_from_api", new_callable=AsyncMock
-            ),
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
-            patch(
-                "financial_database.providers.sec.bulk_ingest.MAX_CONSECUTIVE_TRANSIENT_ERRORS",
-                2,
-            ),
-            pytest.raises(SECBulkIngestAbort, match="Aborting after"),
+            pytest.raises(SECBulkIngestAbort, match="Transient SEC error"),
         ):
             await ingester.ingest_full_universe()
+
+        # The checkpoint must NOT have advanced past the failed company, so it
+        # is retried on resume instead of being silently skipped.
+        saved = ingester._load_checkpoint("full_universe")
+        assert saved is not None
+        assert saved.last_processed_cik is None
 
     def test_parse_company_facts_dict_preserves_units(self, tmp_path):
         """The bulk parse path must preserve per-value units (USD, shares)."""
