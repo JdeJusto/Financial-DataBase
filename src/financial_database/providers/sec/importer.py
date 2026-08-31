@@ -719,7 +719,6 @@ class SECImporter:
                 finished_at=datetime.now(UTC),
                 duration_seconds=duration,
             )
-            stats.errors.append({"import_run_id": run_id, "status": "success"})
 
         except Exception as e:
             duration = int(time.time() - start_time)

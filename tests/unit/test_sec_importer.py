@@ -2,7 +2,7 @@
 
 from datetime import date
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -415,3 +415,21 @@ class TestImportStats:
         assert d["companies_processed"] == 10
         assert d["companies_inserted"] == 5
         assert len(d["errors"]) == 1
+
+
+class TestRunImportPipeline:
+    """Tests for run_import_pipeline stats/error handling."""
+
+    @pytest.mark.asyncio
+    async def test_errors_empty_after_successful_run(self, importer):
+        """stats.errors must not contain a 'success' pseudo-entry."""
+        importer._get_provider_id = MagicMock(return_value=VALID_UUID)
+        importer.import_runs = MagicMock()
+        importer.import_runs.create = MagicMock(return_value={"id": VALID_UUID})
+        importer.import_runs.update = MagicMock()
+        importer.seed_exchanges = AsyncMock()
+        importer.import_company_universe = AsyncMock(return_value=ImportStats())
+
+        stats = await importer.run_import_pipeline("sec_universe")
+
+        assert stats.errors == []
