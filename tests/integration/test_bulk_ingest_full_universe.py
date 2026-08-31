@@ -12,6 +12,7 @@ from financial_database.providers.sec.bulk_ingest import (
     BulkImportCheckpoint,
     SECBulkIngester,
 )
+from financial_database.providers.sec.client import SECNotFoundError
 from financial_database.providers.sec.models import (
     SECCompany,
     SECCompanyFacts,
@@ -283,3 +284,99 @@ class TestIngestFullUniverse:
         assert len(core) == 10  # 5 companies: commit+save each
         assert core[0::2] == ["commit"] * 5
         assert core[1::2] == ["save"] * 5
+
+    @pytest.mark.asyncio
+    async def test_filing_id_map_passed_to_process_company_facts(self, tmp_path):
+        """The accession->filing_id map must reach _process_company_facts."""
+        ingester, client = _make_ingester(tmp_path)
+        _configure_client(client, _five_companies())
+
+        filing_map = {"000032019323000106": "filing-uuid-1"}
+
+        with (
+            patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
+            patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
+            patch.object(ingester, "_get_company_id_by_cik", return_value="company-uuid-1"),
+            patch.object(ingester, "_build_filing_id_map", return_value=filing_map),
+            patch.object(
+                ingester, "_process_submissions_from_api", new_callable=AsyncMock
+            ),
+            patch.object(
+                ingester, "_process_company_facts", new_callable=AsyncMock
+            ) as mock_facts,
+        ):
+            await ingester.ingest_full_universe()
+
+        assert mock_facts.call_count == 5
+        for call in mock_facts.call_args_list:
+            assert call.args[2] == filing_map
+
+    @pytest.mark.asyncio
+    async def test_companyfacts_404_is_skipped_without_crashing(self, tmp_path):
+        """A 404 on companyfacts is recorded and the loop continues."""
+        ingester, client = _make_ingester(tmp_path)
+        _configure_client(client, _five_companies())
+        client.get_company_facts = AsyncMock(
+            side_effect=SECNotFoundError("Resource not found")
+        )
+
+        with (
+            patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
+            patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
+            patch.object(
+                ingester, "_process_submissions_from_api", new_callable=AsyncMock
+            ),
+            patch.object(
+                ingester, "_process_company_facts", new_callable=AsyncMock
+            ) as mock_facts,
+        ):
+            stats = await ingester.ingest_full_universe()
+
+        assert stats.companies_processed == 5
+        assert mock_facts.call_count == 0
+        assert len(stats.errors) == 5
+        assert all(e.get("expected_404") for e in stats.errors)
+
+    def test_parse_company_facts_dict_preserves_units(self, tmp_path):
+        """The bulk parse path must preserve per-value units (USD, shares)."""
+        ingester, _ = _make_ingester(tmp_path)
+        facts_dict = {
+            "us-gaap": {
+                "Assets": {
+                    "label": "Assets",
+                    "unit": "",
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 1000,
+                                "start": None,
+                                "end": "2023-09-30",
+                                "fy": 2023,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2023-11-03",
+                                "accn": "0000320193-23-000106",
+                                "frame": None,
+                            }
+                        ],
+                        "shares": [
+                            {
+                                "val": 15500000,
+                                "start": None,
+                                "end": "2023-09-30",
+                                "fy": 2023,
+                                "fp": "FY",
+                                "form": "10-K",
+                                "filed": "2023-11-03",
+                                "accn": "0000320193-23-000106",
+                                "frame": None,
+                            }
+                        ],
+                    },
+                },
+            },
+        }
+
+        result = ingester._parse_company_facts_dict(facts_dict)
+        values = result["us-gaap"]["Assets"].values
+        assert {v.unit for v in values} == {"USD", "shares"}
