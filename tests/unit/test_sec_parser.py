@@ -348,6 +348,62 @@ class TestSECParser:
         assert len(parsed) == 1
         assert parsed[0].unit == "USD"
 
+    def test_parse_company_facts_uses_decimal_preserving_precision(self, parser):
+        """Fact values must be Decimal, not float, to avoid precision loss."""
+        from decimal import Decimal
+
+        facts = SECCompanyFacts(
+            cik="0000320193",
+            entity_name="Test",
+            facts={
+                "us-gaap": {
+                    "BigInteger": SECCompanyFact(
+                        concept="BigInteger",
+                        namespace="us-gaap",
+                        unit="USD",
+                        values=[
+                            SECCompanyFactValue(
+                                value=123456789012345678901234567890,
+                                period_start=date(2023, 1, 1),
+                                period_end=date(2023, 12, 31),
+                                fiscal_year=2023,
+                                fiscal_period="FY",
+                                form="10-K",
+                                filing_date=date(2024, 1, 15),
+                                accession_number="0000320193-24-000001",
+                            ),
+                        ],
+                    ),
+                    "PreciseDecimal": SECCompanyFact(
+                        concept="PreciseDecimal",
+                        namespace="us-gaap",
+                        unit="USD/shares",
+                        values=[
+                            SECCompanyFactValue(
+                                value="123456789.123456789012345678",
+                                period_start=date(2023, 1, 1),
+                                period_end=date(2023, 12, 31),
+                                fiscal_year=2023,
+                                fiscal_period="FY",
+                                form="10-K",
+                                filing_date=date(2024, 1, 15),
+                                accession_number="0000320193-24-000001",
+                            ),
+                        ],
+                    ),
+                },
+            },
+        )
+
+        parsed = parser.parse_company_facts(facts, {})
+
+        big = next(f for f in parsed if f.concept == "BigInteger")
+        precise = next(f for f in parsed if f.concept == "PreciseDecimal")
+        assert isinstance(big.value, Decimal)
+        assert isinstance(precise.value, Decimal)
+        assert big.value == Decimal(123456789012345678901234567890)
+        assert precise.value == Decimal("123456789.123456789012345678")
+
     def test_parse_company_facts_missing_fiscal_year_infers_from_period_end(
         self, parser
     ):

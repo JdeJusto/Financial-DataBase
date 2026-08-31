@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from financial_database.providers.sec.models import (
     ExchangeMapping,
@@ -73,7 +74,7 @@ class ParsedFinancialFact:
 
     concept: str
     namespace: str
-    value: float
+    value: Decimal
     unit: str
     period_start: date | None
     period_end: date
@@ -216,10 +217,10 @@ class SECParser:
                             normalize_accession_number(value.accession_number)
                         )
 
-                    # Convert value to float, skip non-numeric
+                    # Convert value to Decimal, skip non-numeric
                     try:
-                        numeric_value = float(value.value)
-                    except (ValueError, TypeError):
+                        numeric_value = Decimal(str(value.value))
+                    except (InvalidOperation, ValueError, TypeError):
                         logger.warning(
                             "Skipping non-numeric fact value",
                             extra={
