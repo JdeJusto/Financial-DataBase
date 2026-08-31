@@ -31,6 +31,8 @@ from financial_database.providers.sec.client import (
     SEC_COMPANY_TICKERS_URL,
     SECClient,
     SECNotFoundError,
+    SECRateLimitError,
+    SECServerError,
 )
 from financial_database.providers.sec.models import (
     SECCompanyFact,
@@ -46,6 +48,11 @@ from financial_database.providers.sec.parser import (
 
 logger = logging.getLogger(__name__)
 
+
+class SECBulkIngestAbort(Exception):
+    """Raised to abort the bulk ingestion run (e.g., persistent SEC errors)."""
+
+
 # Note: SEC bulk file URLs may change. These are the official URLs as of 2024.
 # If bulk downloads fail, files must be obtained manually from SEC EDGAR.
 SEC_BULK_COMPANYFACTS_URL = "https://www.sec.gov/files/companyfacts.zip"
@@ -56,6 +63,7 @@ SEC_COMPANY_TICKERS_JSON_URL = "https://www.sec.gov/files/company_tickers.json"
 # Configuration for periodic checkpointing and transaction chunking
 FACTS_PER_TRANSACTION = 500  # Number of facts per database transaction
 CHECKPOINT_INTERVAL_SECONDS = 30.0  # Checkpoint interval in seconds
+MAX_CONSECUTIVE_TRANSIENT_ERRORS = 20  # Abort after this many 429/5xx in a row
 
 
 @dataclass
@@ -1417,6 +1425,10 @@ class SECBulkIngester:
             f"Processing {len(companies)} companies (of {total_companies} total)"
         )
 
+        # Track consecutive transient SEC errors (429/5xx) to abort the run
+        # instead of silently skipping every company during an outage.
+        consecutive_transient_errors = 0
+
         # Process each company
         for company in companies:
             cik = company.normalized_cik
@@ -1425,6 +1437,8 @@ class SECBulkIngester:
             if checkpoint.last_processed_cik and cik <= checkpoint.last_processed_cik:
                 logger.debug("Skipping already processed CIK", extra={"cik": cik})
                 continue
+
+            company_transient = False
 
             try:
                 logger.info(
@@ -1481,6 +1495,29 @@ class SECBulkIngester:
                             "expected_404": True,
                         }
                     )
+                except (SECRateLimitError, SECServerError) as e:
+                    consecutive_transient_errors += 1
+                    company_transient = True
+                    logger.warning(
+                        "Transient SEC error (rate limit/server)",
+                        extra={"cik": cik, "stage": "submissions", "error": str(e)},
+                    )
+                    stats.errors.append(
+                        {
+                            "cik": cik,
+                            "stage": "submissions",
+                            "error": str(e),
+                            "transient": True,
+                        }
+                    )
+                    if (
+                        consecutive_transient_errors
+                        >= MAX_CONSECUTIVE_TRANSIENT_ERRORS
+                    ):
+                        raise SECBulkIngestAbort(
+                            f"Aborting after {consecutive_transient_errors} "
+                            "consecutive transient SEC errors"
+                        )
                 except (
                     aiohttp.ClientError,
                     ValueError,
@@ -1558,6 +1595,29 @@ class SECBulkIngester:
                             "expected_404": True,
                         }
                     )
+                except (SECRateLimitError, SECServerError) as e:
+                    consecutive_transient_errors += 1
+                    company_transient = True
+                    logger.warning(
+                        "Transient SEC error (rate limit/server)",
+                        extra={"cik": cik, "stage": "companyfacts", "error": str(e)},
+                    )
+                    stats.errors.append(
+                        {
+                            "cik": cik,
+                            "stage": "companyfacts",
+                            "error": str(e),
+                            "transient": True,
+                        }
+                    )
+                    if (
+                        consecutive_transient_errors
+                        >= MAX_CONSECUTIVE_TRANSIENT_ERRORS
+                    ):
+                        raise SECBulkIngestAbort(
+                            f"Aborting after {consecutive_transient_errors} "
+                            "consecutive transient SEC errors"
+                        )
                 except (
                     aiohttp.ClientError,
                     ValueError,
@@ -1589,6 +1649,10 @@ class SECBulkIngester:
                 checkpoint.filings_processed = stats.filings_processed
                 self.conn.commit()
                 self._save_checkpoint(checkpoint)
+
+                # Reset the consecutive transient-error counter on success.
+                if not company_transient:
+                    consecutive_transient_errors = 0
 
                 # Rate limiting between companies
                 if delay_between_requests > 0:

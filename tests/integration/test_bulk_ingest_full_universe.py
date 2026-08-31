@@ -12,9 +12,13 @@ import pytest
 from financial_database.providers.sec.bulk_ingest import (
     BulkImportCheckpoint,
     BulkImportStats,
+    SECBulkIngestAbort,
     SECBulkIngester,
 )
-from financial_database.providers.sec.client import SECNotFoundError
+from financial_database.providers.sec.client import (
+    SECNotFoundError,
+    SECServerError,
+)
 from financial_database.providers.sec.models import (
     SECCompany,
     SECCompanyFacts,
@@ -338,6 +342,55 @@ class TestIngestFullUniverse:
         assert mock_facts.call_count == 0
         assert len(stats.errors) == 5
         assert all(e.get("expected_404") for e in stats.errors)
+
+    @pytest.mark.asyncio
+    async def test_server_error_is_skipped_without_crashing(self, tmp_path):
+        """A 5xx/429 on companyfacts is recorded and the loop continues."""
+        ingester, client = _make_ingester(tmp_path)
+        _configure_client(client, _five_companies())
+        client.get_company_facts = AsyncMock(
+            side_effect=SECServerError("Server error 500")
+        )
+
+        with (
+            patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
+            patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
+            patch.object(
+                ingester, "_process_submissions_from_api", new_callable=AsyncMock
+            ),
+            patch.object(
+                ingester, "_process_company_facts", new_callable=AsyncMock
+            ),
+        ):
+            stats = await ingester.ingest_full_universe()
+
+        assert stats.companies_processed == 5
+        assert len(stats.errors) == 5
+        assert all(e.get("transient") for e in stats.errors)
+
+    @pytest.mark.asyncio
+    async def test_too_many_consecutive_transient_errors_aborts(self, tmp_path):
+        """Too many consecutive 429/5xx aborts instead of skipping forever."""
+        ingester, client = _make_ingester(tmp_path)
+        _configure_client(client, _five_companies())
+        client.get_submissions = AsyncMock(side_effect=SECServerError("Server error"))
+
+        with (
+            patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
+            patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
+            patch.object(
+                ingester, "_process_submissions_from_api", new_callable=AsyncMock
+            ),
+            patch.object(
+                ingester, "_process_company_facts", new_callable=AsyncMock
+            ),
+            patch(
+                "financial_database.providers.sec.bulk_ingest.MAX_CONSECUTIVE_TRANSIENT_ERRORS",
+                2,
+            ),
+            pytest.raises(SECBulkIngestAbort, match="Aborting after"),
+        ):
+            await ingester.ingest_full_universe()
 
     def test_parse_company_facts_dict_preserves_units(self, tmp_path):
         """The bulk parse path must preserve per-value units (USD, shares)."""

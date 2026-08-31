@@ -18,6 +18,7 @@ from financial_database.db.migrations.runner import run_pending
 from financial_database.db.migrations.runner import status as migration_status
 from financial_database.providers.sec.bulk_ingest import (
     BulkImportCheckpoint,
+    SECBulkIngestAbort,
     create_bulk_ingester,
 )
 
@@ -647,6 +648,10 @@ def sec_bulk_ingest(
     except (OSError, psycopg.Error, RuntimeError, ValueError) as e:
         print(f"❌ Bulk ingestion failed: {e}", file=sys.stderr)
         logging.getLogger(__name__).exception("Bulk ingestion failed")
+        sys.exit(1)
+    except SECBulkIngestAbort as e:
+        print(f"❌ Bulk ingestion aborted: {e}", file=sys.stderr)
+        print("   Checkpoint saved; resume later with the same command.")
         sys.exit(1)
     except asyncio.CancelledError:
         print("\n⚠️  Ingestion interrupted by signal, checkpoint saved for resume")
