@@ -103,14 +103,51 @@ If process is killed (SIGKILL/power loss):
 3. Last uncommitted chunk (max 500 facts) will be re-ingested
 4. Idempotency ensures no duplicates
 
-## Performance Expectations
+## Performance Expectations (validated)
 
-| Metric | Value (50 companies) | Extrapolated (10,388) |
-|--------|---------------------|----------------------|
-| Time | ~16 min | ~56 hours |
-| Facts | ~1.2M | ~247M |
-| Database Size | ~1 GB | ~197 GB |
-| Facts/Company | ~23,800 | ~23,800 |
+| Metric | Value (608 companies) | Extrapolated (10,388) |
+|--------|-----------------------|----------------------|
+| Time | ~51 min | ~14.5 hours |
+| Facts | ~12.3M | ~213M |
+| Filings | ~130K | ~2.2M |
+| Database Size | ~10 GB | ~170–200 GB |
+| Facts/Company | ~20,500 | ~20,500 |
+
+A 608-company stress test was completed and validated (see
+`docs/validation_report.md`): zero duplicates/orphans, historical coverage back
+to 2009, and 10 expected 404s (non-XBRL filers).
+
+## PostgreSQL Tuning
+
+Apply the recommended settings before the full load (see
+`scripts/tune_postgres.sql`):
+
+```bash
+psql "postgresql://financial@localhost:5432/financial_database" -f scripts/tune_postgres.sql
+```
+
+Settings applied: `maintenance_work_mem=512MB`, `work_mem=64MB`,
+`synchronous_commit=off`, `max_wal_size=4GB`, `checkpoint_timeout=15min`.
+
+## Pre-Flight Validation
+
+Before launching the full load, run the integrity audit and historical coverage
+queries:
+
+```bash
+psql "postgresql://financial@localhost:5432/financial_database" -f scripts/integrity_audit.sql
+psql "postgresql://financial@localhost:5432/financial_database" -f scripts/verify_history.sql
+```
+
+## Running the Full Load
+
+```bash
+SEC_USER_AGENT="YourApp/1.0 you@example.com" \
+.venv/bin/python -m financial_database.cli sec bulk-ingest --confirm
+```
+
+The checkpoint is source-aware; re-running the same command resumes from the
+last processed CIK. Use `--force` to ignore prior progress and start over.
 
 ## Data Integrity Verification
 

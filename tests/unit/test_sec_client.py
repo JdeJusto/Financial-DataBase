@@ -1,24 +1,21 @@
 """Unit tests for SEC EDGAR HTTP client."""
+import asyncio
 import json
 import os
 import tempfile
-import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import aiohttp
 from aiohttp import ClientError, ClientResponseError
 
 from financial_database.providers.sec.client import (
+    SEC_COMPANY_TICKERS_URL,
     SECClient,
     SECClientError,
-    SECRateLimitError,
     SECNotFoundError,
+    SECRateLimitError,
     SECServerError,
-    SEC_COMPANY_TICKERS_URL,
 )
-from financial_database.providers.sec.models import SECCompany
 
 
 @pytest.fixture
@@ -74,9 +71,11 @@ class TestSECClientInitialization:
 
     def test_init_without_user_agent_raises(self):
         """Test that missing user agent raises ValueError."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="SEC_USER_AGENT is required"):
-                SECClient()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            pytest.raises(ValueError, match="SEC_USER_AGENT is required"),
+        ):
+            SECClient()
 
     def test_init_with_max_retries(self):
         """Test client initialization with custom max_retries."""
@@ -142,23 +141,24 @@ class TestGetCompanyTickers:
 
         try:
             # Patch the SEC_COMPANY_TICKERS_URL constant directly
-            with patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', temp_file):
-                # Create a client with the updated URL
-                with patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}):
-                    test_client = SECClient(max_retries=2)
-                    companies = await test_client.get_company_tickers()
+            with (
+                patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', temp_file),
+                patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
+            ):
+                test_client = SECClient(max_retries=2)
+                companies = await test_client.get_company_tickers()
 
-                    # Verify results
-                    assert len(companies) == 2
-                    assert companies[0].cik == "0000320193"
-                    assert companies[0].name == "Apple Inc."
-                    assert companies[0].ticker == "AAPL"
-                    assert companies[0].exchange == "NASDAQ"
+                # Verify results
+                assert len(companies) == 2
+                assert companies[0].cik == "0000320193"
+                assert companies[0].name == "Apple Inc."
+                assert companies[0].ticker == "AAPL"
+                assert companies[0].exchange == "NASDAQ"
 
-                    assert companies[1].cik == "0000020340"
-                    assert companies[1].name == "Tesla Inc."
-                    assert companies[1].ticker == "TSLA"
-                    assert companies[1].exchange == "NASDAQ"
+                assert companies[1].cik == "0000020340"
+                assert companies[1].name == "Tesla Inc."
+                assert companies[1].ticker == "TSLA"
+                assert companies[1].exchange == "NASDAQ"
         finally:
             # Clean up temp file
             os.unlink(temp_file)
@@ -180,18 +180,19 @@ class TestGetCompanyTickers:
         try:
             file_url = f"file://{temp_file}"
             # Patch the SEC_COMPANY_TICKERS_URL constant directly
-            with patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', file_url):
-                # Create a client with the updated URL
-                with patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}):
-                    test_client = SECClient(max_retries=2)
-                    companies = await test_client.get_company_tickers()
+            with (
+                patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', file_url),
+                patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
+            ):
+                test_client = SECClient(max_retries=2)
+                companies = await test_client.get_company_tickers()
 
-                    # Verify results
-                    assert len(companies) == 1
-                    assert companies[0].cik == "0000320193"
-                    assert companies[0].name == "Apple Inc."
-                    assert companies[0].ticker == "AAPL"
-                    assert companies[0].exchange == "NASDAQ"
+                # Verify results
+                assert len(companies) == 1
+                assert companies[0].cik == "0000320193"
+                assert companies[0].name == "Apple Inc."
+                assert companies[0].ticker == "AAPL"
+                assert companies[0].exchange == "NASDAQ"
         finally:
             # Clean up temp file
             os.unlink(temp_file)
@@ -200,12 +201,13 @@ class TestGetCompanyTickers:
     async def test_get_company_tickers_local_file_not_found(self):
         """Test handling of missing local file."""
         # Patch the SEC_COMPANY_TICKERS_URL constant directly
-        with patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', "/nonexistent/file.json"):
-            # Create a client with the updated URL
-            with patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}):
-                test_client = SECClient(max_retries=2)
-                with pytest.raises(SECClientError, match="Failed to load local file"):
-                    await test_client.get_company_tickers()
+        with (
+            patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', "/nonexistent/file.json"),
+            patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
+            pytest.raises(SECClientError, match="Failed to load local file"),
+        ):
+            test_client = SECClient(max_retries=2)
+            await test_client.get_company_tickers()
 
     @pytest.mark.asyncio
     async def test_get_company_tickers_local_file_invalid_json(self):
@@ -216,12 +218,13 @@ class TestGetCompanyTickers:
 
         try:
             # Patch the SEC_COMPANY_TICKERS_URL constant directly
-            with patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', temp_file):
-                # Create a client with the updated URL
-                with patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}):
-                    test_client = SECClient(max_retries=2)
-                    with pytest.raises(SECClientError, match="Failed to load local file"):
-                        await test_client.get_company_tickers()
+            with (
+                patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', temp_file),
+                patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
+                pytest.raises(SECClientError, match="Failed to load local file"),
+            ):
+                test_client = SECClient(max_retries=2)
+                await test_client.get_company_tickers()
         finally:
             os.unlink(temp_file)
 

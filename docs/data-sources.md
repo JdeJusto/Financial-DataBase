@@ -154,6 +154,7 @@ financial-db sec bulk-ingest --dry-run
 | `--dry-run` | Validate without writing to PostgreSQL |
 | `--verbose` | Increase logging detail |
 | `--confirm` | Confirm full universe ingestion (required) |
+| `--force` | Ignore previous checkpoint and start from scratch |
 
 ##### Checkpoint File Format
 
@@ -192,8 +193,21 @@ The bulk ingestion is fully idempotent:
 
 - **Company-level**: Checks if company exists by CIK before creating
 - **Fact-level**: Uses unique constraint on `(company_id, concept, period_start, period_end, filing_id, source_id)` to skip duplicates
+- **NULL filing_id**: The unique constraint is `NULLS NOT DISTINCT` (migration `0019`) so facts whose `filing_id` is NULL still deduplicate correctly
 - **Re-running**: Running the same ingestion twice produces zero new records
 - **With checkpoint**: Running with a completed checkpoint results in zero processed companies
+
+Facts are linked to their source filing via `filing_id` where a filing record
+exists (filings are processed before facts). Facts from forms not persisted as
+filings (e.g. `8-K`) have a NULL `filing_id`; their accession number is still
+embedded in `source_id`.
+
+##### Expected 404s
+
+Companies that do not file XBRL financial statements return HTTP 404 on the
+`companyfacts` endpoint. This is expected and logged at INFO level
+(`expected_404: true`), not treated as a failure. Examples: closed-end funds
+(N-CSR filers), foreign ADRs, royalty trusts, and utility subsidiaries.
 
 ##### Output Summary
 
@@ -216,23 +230,24 @@ On completion, the command prints:
    Elapsed time: 3600.5s (60.0min)
 ```
 
-##### Storage Requirements
+##### Storage Requirements (validated)
 
-- **Database**: ~50-100GB for complete SEC universe (financial_facts table)
+- **Database**: ~170–200GB for the complete SEC universe (`financial_facts` dominates; ~10GB for 608 companies / 12.3M facts)
 - **Raw files**: ~2.5GB for compressed bulk downloads
-- **Extracted**: ~10-15GB for uncompressed JSON
-- **Checkpoints**: ~1MB
+- **Extracted**: ~10–15GB for uncompressed JSON
+- **Checkpoints**: <1MB
 
-##### Performance Notes
+##### Performance Notes (validated)
 
 - **Streaming parser**: Uses `ijson` for memory-efficient parsing of large JSON files
-- **Batch commits**: Facts are committed per company for atomicity
-- **Estimated time**: 4-8 hours for full universe on modest hardware
-- **Rate limiting**: Not applicable for bulk files (single download)
+- **Batch commits**: Facts are committed in 500-row batches per company
+- **Measured rate**: ~5.0 s/company (network bound); ~14.5 hours for the full universe
+- **Rate limiting**: 10 requests/sec max, conservative backoff on 429/5xx
 
 ##### Historical Completeness Verification
 
-After ingestion, verify historical data is present:
+After ingestion, verify historical data with `scripts/verify_history.sql`
+(23 major companies; established filers reach back to fiscal year 2009).
 
 ```sql
 -- Check earliest facts available

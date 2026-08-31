@@ -525,3 +525,33 @@ company_listings 1 ──< splits
 - **BIGINT**: Used for potentially large counts (trading volume)
 - **BOOLEAN**: Used for true/false flags
 - **JSONB**: Used for flexible, structured metadata storage
+
+---
+
+## Integrity Validation
+
+Before the full SEC universe load, run the integrity audit
+(`scripts/integrity_audit.sql`) against `financial_database`. All checks must
+return zero offending rows except "companies with no facts/filings" (expected
+for non-XBRL filers such as closed-end funds, ADRs, and royalty trusts).
+
+The audit covers:
+
+- Duplicate companies (legal_name + country, or same CIK on multiple companies)
+- Duplicate company identifiers / listings / filings / financial facts
+- Orphaned facts, filings, and listings
+- Facts with NULL value
+- Companies with no facts / filings / identifiers
+- Facts without provenance (missing `provider_id`, `filing_id`, or `source_id`)
+- Facts referencing a non-existent filing
+
+Fact provenance notes:
+
+- Every fact has `provider_id` and `source_id` (the accession number is embedded
+  in `source_id`).
+- `filing_id` links facts to their source filing where one is stored. Facts from
+  forms not persisted as filings (e.g. `8-K`) legitimately have a NULL
+  `filing_id`.
+- The `financial_facts` unique constraint is defined `NULLS NOT DISTINCT`
+  (migration `0019`) so facts with a NULL `filing_id` still deduplicate
+  correctly.

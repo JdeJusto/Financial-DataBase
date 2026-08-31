@@ -91,7 +91,6 @@ LARGE_CAP_TICKERS = {
     "MCD": "McDonald's Corporation",
     "ET": "Energy Transfer LP",
     "CVX": "Chevron Corporation",
-    "RTX": "Raytheon Technologies Corporation",
     "SRE": "Sempra",
     "SHW": "Sherwin-Williams Company",
     "F": "Ford Motor Company",
@@ -118,7 +117,7 @@ async def main():
 
         # 1. Large-cap US companies (by ticker)
         large_cap_ciks = set()
-        for ticker, name in LARGE_CAP_TICKERS.items():
+        for ticker in LARGE_CAP_TICKERS:
             if ticker in ticker_to_cik:
                 large_cap_ciks.add(ticker_to_cik[ticker])
             else:
@@ -190,9 +189,7 @@ async def main():
         # Save to file
         output_file = Path("data/stress_test_ciks.txt")
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_file, "w") as f:
-            for cik in sorted(selected_ciks):
-                f.write(f"{cik}\n")
+        output_file.write_text("\n".join(sorted(selected_ciks)) + "\n")
         print(f"Saved selected CIKs to {output_file}")
 
         # Also, let's print some stats

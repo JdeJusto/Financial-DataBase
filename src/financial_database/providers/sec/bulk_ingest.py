@@ -1070,8 +1070,8 @@ class SECBulkIngester:
             metadata={},
         )
 
-        # Parse facts
-        parsed_facts = self.parser.parse_company_facts(sec_company_facts)
+        # Parse facts, linking each fact to its filing via filing_id_map
+        parsed_facts = self.parser.parse_company_facts(sec_company_facts, filing_id_map)
 
         # Look up company_id from CIK
         company_id = None
@@ -1181,6 +1181,19 @@ class SECBulkIngester:
             for row in cur.fetchall():
                 mapping[row["accession_number"]] = str(row["id"])
         return mapping
+
+    def _get_company_id_by_cik(self, cik: str) -> str | None:
+        """Look up the internal company UUID for a given CIK."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """SELECT c.id FROM companies c
+                   JOIN company_identifiers ci ON c.id = ci.company_id
+                   WHERE ci.identifier_type = 'CIK' AND ci.identifier_value = %s
+                   AND ci.provider_id = (SELECT id FROM data_providers WHERE name = %s)""",
+                (cik, self.SEC_PROVIDER_NAME),
+            )
+            row = cur.fetchone()
+            return str(row["id"]) if row else None
 
     async def _import_financial_fact(
         self, company_id: str, fact: ParsedFinancialFact, stats: BulkImportStats
@@ -1431,6 +1444,51 @@ class SECBulkIngester:
                     stats,
                 )
 
+                # Fetch and process submissions (filings) first so financial
+                # facts can be linked to their filing via filing_id.
+                filing_id_map = {}
+                try:
+                    logger.debug("Fetching submissions", extra={"cik": cik})
+                    submissions = await self.client.get_submissions(cik)
+
+                    # Process submissions - convert to format expected by _process_submissions_from_api
+                    await self._process_submissions_from_api(
+                        cik, submissions, provider_id, stats
+                    )
+
+                    # Build accession_number -> filing_id map for fact linking.
+                    company_id = self._get_company_id_by_cik(cik)
+                    if company_id:
+                        filing_id_map = self._build_filing_id_map(
+                            company_id, provider_id
+                        )
+                except SECNotFoundError as e:
+                    logger.info(
+                        "No submissions (404) for CIK", extra={"cik": cik}
+                    )
+                    stats.errors.append(
+                        {
+                            "cik": cik,
+                            "stage": "submissions",
+                            "error": str(e),
+                            "expected_404": True,
+                        }
+                    )
+                except (
+                    aiohttp.ClientError,
+                    ValueError,
+                    TypeError,
+                    KeyError,
+                    RuntimeError,
+                ) as e:
+                    logger.warning(
+                        "Failed to fetch/process submissions",
+                        extra={"cik": cik, "error": str(e)},
+                    )
+                    stats.errors.append(
+                        {"cik": cik, "stage": "submissions", "error": str(e)}
+                    )
+
                 # Fetch and process companyfacts
                 try:
                     logger.debug("Fetching companyfacts", extra={"cik": cik})
@@ -1475,18 +1533,30 @@ class SECBulkIngester:
                             "facts": facts_dict,
                             "entity_name": company_facts.entity_name,
                         },
-                        {},
+                        filing_id_map,
                         provider_id,
                         stats,
                     )
-                    stats.filings_processed += 0  # Will be updated by submissions
+                except SECNotFoundError as e:
+                    logger.info(
+                        "No XBRL companyfacts (404) for CIK — expected for "
+                        "funds, ADRs, and trusts that do not file XBRL",
+                        extra={"cik": cik},
+                    )
+                    stats.errors.append(
+                        {
+                            "cik": cik,
+                            "stage": "companyfacts",
+                            "error": str(e),
+                            "expected_404": True,
+                        }
+                    )
                 except (
                     aiohttp.ClientError,
                     ValueError,
                     TypeError,
                     KeyError,
                     RuntimeError,
-                    SECNotFoundError,
                 ) as e:
                     logger.warning(
                         "Failed to fetch/process companyfacts",
@@ -1494,31 +1564,6 @@ class SECBulkIngester:
                     )
                     stats.errors.append(
                         {"cik": cik, "stage": "companyfacts", "error": str(e)}
-                    )
-
-                # Fetch and process submissions
-                try:
-                    logger.debug("Fetching submissions", extra={"cik": cik})
-                    submissions = await self.client.get_submissions(cik)
-
-                    # Process submissions - convert to format expected by _process_submissions_from_api
-                    await self._process_submissions_from_api(
-                        cik, submissions, provider_id, stats
-                    )
-                except (
-                    aiohttp.ClientError,
-                    ValueError,
-                    TypeError,
-                    KeyError,
-                    RuntimeError,
-                    SECNotFoundError,
-                ) as e:
-                    logger.warning(
-                        "Failed to fetch/process submissions",
-                        extra={"cik": cik, "error": str(e)},
-                    )
-                    stats.errors.append(
-                        {"cik": cik, "stage": "submissions", "error": str(e)}
                     )
 
                 # Update stats

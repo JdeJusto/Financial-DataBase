@@ -131,13 +131,36 @@ financial-db sec bulk-ingest --checkpoint-file ./data/checkpoints/sec_bulk/full_
 - **Batch inserts**: 500 facts per transaction for 50%+ performance improvement
 - **~56 hours** for complete SEC universe (~10,000 companies)
 
-**Performance:**
-| Metric | Value (10 companies) | Extrapolated (10,388) |
-|--------|---------------------|----------------------|
-| Time | ~25s | ~56 hours |
-| Facts inserted | ~234K | ~247M |
-| Database size | ~183 MB | ~197 GB |
-| Avg time/company | ~2.6s | ~2.6s (network bound) |
+**Performance (validated):**
+| Metric | Value (608 companies) | Extrapolated (10,388) |
+|--------|-----------------------|----------------------|
+| Time | ~51 min | ~14.5 hours |
+| Facts inserted | ~12.3M | ~213M |
+| Filings inserted | ~130K | ~2.2M |
+| Database size | ~10 GB | ~170–200 GB |
+| Avg time/company | ~5.0s | ~5.0s (network bound) |
+
+### Stress Test Results (Phase 3.8)
+
+A 608-company stress test was run and validated. Results:
+
+- Companies processed: 608 (587 inserted, 21 updated)
+- Filings inserted: 129,974
+- Financial facts inserted: 12,343,979
+- Errors: 10 (all expected `404` for non-XBRL filers: closed-end funds, ADRs, royalty trusts)
+- Elapsed: ~51 minutes
+- Integrity audit: zero duplicates/orphans (see `docs/validation_report.md`)
+- Historical coverage: major filers back to 2009 (see `scripts/verify_history.sql`)
+
+Full universe command:
+
+```bash
+SEC_USER_AGENT="YourApp/1.0 you@example.com" \
+.venv/bin/python -m financial_database.cli sec bulk-ingest --confirm
+```
+
+Resume from an interrupted run with the same command (the checkpoint is
+source-aware and resumes automatically). Use `--force` to reset progress.
 
 ## Documentation
 
