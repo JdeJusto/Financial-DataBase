@@ -1570,13 +1570,19 @@ class SECBulkIngester:
                 # Update stats
                 stats.companies_processed += 1
 
-                # Update checkpoint after successful company processing
+                # Update checkpoint after successful company processing.
+                # Commit BEFORE saving the checkpoint so a crash between the
+                # two cannot mark an uncommitted company as processed (which
+                # would cause it to be skipped on resume). If we crash after
+                # commit but before saving the checkpoint, the company is
+                # simply re-processed on resume and idempotency prevents
+                # duplicates.
                 checkpoint.last_processed_cik = cik
                 checkpoint.companies_processed = stats.companies_processed
                 checkpoint.facts_processed = stats.facts_processed
                 checkpoint.filings_processed = stats.filings_processed
-                self._save_checkpoint(checkpoint)
                 self.conn.commit()
+                self._save_checkpoint(checkpoint)
 
                 # Rate limiting between companies
                 if delay_between_requests > 0:

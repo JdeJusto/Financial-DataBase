@@ -241,3 +241,45 @@ class TestIngestFullUniverse:
         # Without --force, the mismatched-source checkpoint is ignored.
         assert stats.companies_processed == 5
         assert mock_ticker.call_count == 5
+
+    @pytest.mark.asyncio
+    async def test_commit_happens_before_checkpoint_save(self, tmp_path):
+        """conn.commit() must run before _save_checkpoint() for each company.
+
+        Reversing this order marks a company as processed before its data is
+        durable, so a crash in between loses data on resume.
+        """
+        ingester, client = _make_ingester(tmp_path)
+        _configure_client(client, _five_companies())
+
+        events = []
+
+        with (
+            patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
+            patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
+            patch.object(
+                ingester, "_process_submissions_from_api", new_callable=AsyncMock
+            ),
+            patch.object(
+                ingester.conn, "commit", side_effect=lambda: events.append("commit")
+            ),
+            patch.object(
+                ingester,
+                "_save_checkpoint",
+                side_effect=lambda cp: events.append("save"),
+            ),
+        ):
+            await ingester.ingest_full_universe()
+
+        # Strip the initial "fresh start" save and the final save; the core
+        # sequence must be commit -> save per company (never save -> commit).
+        core = list(events)
+        if core and core[0] == "save":
+            core = core[1:]
+        if core and core[-1] == "save":
+            core = core[:-1]
+
+        assert len(core) == 10  # 5 companies: commit+save each
+        assert core[0::2] == ["commit"] * 5
+        assert core[1::2] == ["save"] * 5
