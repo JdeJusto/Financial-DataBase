@@ -47,7 +47,7 @@ class CompanyListingRepository:
         """Get all listings for a company."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT cl.id, cl.company_id, cl.exchange_id, cl.ticker, cl.share_class, cl.listing_date, cl.delisted_date, cl.is_primary, "
+                "SELECT cl.id, cl.company_id, cl.exchange_id, cl.ticker, cl.share_class, cl.listing_date, cl.delisting_date, cl.is_primary, "
                 "e.code, e.name, e.country, e.timezone, e.currency "
                 "FROM company_listings cl JOIN exchanges e ON cl.exchange_id = e.id WHERE cl.company_id = %s",
                 (company_id,),
@@ -58,7 +58,7 @@ class CompanyListingRepository:
         """Get all listings with a specific ticker."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT cl.id, cl.company_id, cl.exchange_id, cl.ticker, cl.share_class, cl.listing_date, cl.delisted_date, cl.is_primary, "
+                "SELECT cl.id, cl.company_id, cl.exchange_id, cl.ticker, cl.share_class, cl.listing_date, cl.delisting_date, cl.is_primary, "
                 "e.code, e.name, e.country, e.timezone, e.currency "
                 "FROM company_listings cl JOIN exchanges e ON cl.exchange_id = e.id WHERE cl.ticker = %s",
                 (ticker,),
