@@ -207,7 +207,7 @@ class SECClient:
         raw_subdir: str = "",
         raw_filename: str = "",
     ) -> dict[str, Any]:
-        """Perform HTTP GET with infinite retries on network errors, 10-second intervals."""
+        """Perform HTTP GET with retries, backoff, and bounded network retries."""
         await self._ensure_session()
         await self._rate_limit()
 
@@ -329,8 +329,12 @@ class SECClient:
                         raise SECClientError(f"HTTP {status}: {e.message}")
                 else:
                     # Network errors (timeout, connection errors, etc.)
+                    if attempt >= max_retries:
+                        raise SECClientError(
+                            f"Network error after {max_retries} retries: {e}"
+                        )
                     logger.warning(
-                        "SEC request failed, will retry in 10 seconds",
+                        "SEC request failed, will retry",
                         extra={
                             "url": url,
                             "attempt": attempt,
@@ -354,7 +358,7 @@ class SECClient:
         """Perform HTTP GET with retries, backoff, and rate limiting.
 
         For 429/5xx/404: uses max_retries with exponential backoff.
-        For network errors: retries indefinitely with 10-second intervals.
+        For network errors: retries with 10-second intervals up to max_retries.
         """
         if max_retries is None:
             max_retries = self._max_retries

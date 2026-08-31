@@ -1,5 +1,4 @@
 """Unit tests for SEC EDGAR HTTP client."""
-import asyncio
 import json
 import os
 import tempfile
@@ -537,31 +536,22 @@ class TestRequestWithRetry:
 
     @pytest.mark.asyncio
     async def test_request_with_retry_network_error_exhausted(self, sec_client, mock_aiohttp_session):
-        """Test that network errors retry indefinitely (until shutdown)."""
+        """Test that network errors raise SECClientError after max_retries."""
         with patch.object(sec_client, '_ensure_session'), \
              patch.object(sec_client, '_rate_limit'), \
-             patch.object(sec_client, '_check_shutdown') as mock_check_shutdown, \
              patch.object(sec_client, '_wait_with_shutdown_check') as mock_wait:
 
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
-            # Simulate shutdown being requested after first wait
-            mock_check_shutdown.side_effect = [None, asyncio.CancelledError("Shutdown")]
-
             # Always return network error
-            error_response = AsyncMock()
-            error_response.__aenter__ = AsyncMock(side_effect=ClientError("Network error"))
-            error_response.__aexit__ = AsyncMock(return_value=None)
-
-            # Configure the mock session.get to return a context manager that yields this error
             mock_aiohttp_session.get.return_value.__aenter__.side_effect = ClientError("Network error")
             mock_aiohttp_session.get.return_value.__aexit__.return_value = None
 
-            with pytest.raises(asyncio.CancelledError):
+            with pytest.raises(SECClientError, match="Network error after 2 retries"):
                 await sec_client._request_with_retry("http://test.com", max_retries=2)
 
-            # Should have tried to wait (network errors wait indefinitely)
+            # Should have waited between retries
             assert mock_wait.call_count >= 1
 
     @pytest.mark.asyncio
