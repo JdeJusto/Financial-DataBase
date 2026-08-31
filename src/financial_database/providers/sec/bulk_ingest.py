@@ -196,9 +196,72 @@ class SECBulkIngester:
         # Provider ID (cached)
         self._provider_id: uuid.UUID | None = None
 
+        # Import run lifecycle state
+        self._import_run_id: str | None = None
+        self._import_run_start: float | None = None
+
         # SEC Provider name
         self.SEC_PROVIDER_NAME = "SEC EDGAR"
         self.SEC_PROVIDER_TYPE = "sec"
+
+    def _record_raw_document(
+        self, provider_id, source_identifier: str, path: Path
+    ) -> None:
+        """Record a raw file in raw_documents with its checksum."""
+        if not path.exists():
+            return
+        checksum = self._compute_file_checksum(path)
+        self.raw_docs.create(
+            provider_id=str(provider_id),
+            source_identifier=source_identifier,
+            storage_path=str(path),
+            checksum=checksum,
+            content_type="application/json",
+            metadata={},
+        )
+
+    def _start_import_run(self, provider_id) -> str:
+        """Create an import_runs record and return its id."""
+        self._import_run_start = time.time()
+        run = self.import_runs.create(
+            str(provider_id), "sec_bulk_full_universe", "running"
+        )
+        self._import_run_id = str(run["id"])
+        return self._import_run_id
+
+    def _finish_import_run(
+        self, status: str, stats: BulkImportStats | None = None, error: str | None = None
+    ) -> None:
+        """Mark the current import run as success/failed with counts."""
+        if self._import_run_id is None:
+            return
+        duration = (
+            int(time.time() - self._import_run_start)
+            if self._import_run_start is not None
+            else None
+        )
+        if stats is None:
+            stats = BulkImportStats()
+        self.import_runs.update(
+            self._import_run_id,
+            status=status,
+            records_processed=stats.companies_processed
+            + stats.filings_processed
+            + stats.facts_processed,
+            records_inserted=stats.companies_inserted
+            + stats.filings_inserted
+            + stats.facts_inserted,
+            records_updated=stats.companies_updated,
+            records_skipped=stats.filings_skipped + stats.facts_skipped,
+            errors={"error": error} if error else None,
+            finished_at=datetime.now(UTC),
+            duration_seconds=duration,
+        )
+        self.conn.commit()
+
+    def mark_import_run_failed(self, error: str) -> None:
+        """Mark the current import run as failed (called on abort/crash)."""
+        self._finish_import_run("failed", error=error)
 
     def _compute_file_checksum(self, file_path: Path) -> str:
         """Compute SHA256 checksum of a file."""
@@ -1362,6 +1425,9 @@ class SECBulkIngester:
         stats = BulkImportStats()
         provider_id = self._get_provider_id()
 
+        # Record the import run for audit/provenance.
+        self._start_import_run(provider_id)
+
         # The tickers source identifies the company universe. A checkpoint saved
         # against a different source (e.g., a filtered test universe) must not
         # skip companies belonging to the current source.
@@ -1476,6 +1542,11 @@ class SECBulkIngester:
                     await self._process_submissions_from_api(
                         cik, submissions, provider_id, stats
                     )
+                    self._record_raw_document(
+                        provider_id,
+                        f"submissions:{cik}",
+                        self._raw_dir / "submissions" / f"{cik}.json",
+                    )
 
                     # Build accession_number -> filing_id map for fact linking.
                     company_id = self._get_company_id_by_cik(cik)
@@ -1580,6 +1651,11 @@ class SECBulkIngester:
                         filing_id_map,
                         provider_id,
                         stats,
+                    )
+                    self._record_raw_document(
+                        provider_id,
+                        f"companyfacts:{cik}",
+                        self._raw_dir / "companyfacts" / f"{cik}.json",
                     )
                 except SECNotFoundError as e:
                     logger.info(
@@ -1687,6 +1763,7 @@ class SECBulkIngester:
                 "errors": len(stats.errors),
             },
         )
+        self._finish_import_run("success", stats)
         return stats
 
 

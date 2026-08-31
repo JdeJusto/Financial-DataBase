@@ -646,10 +646,12 @@ def sec_bulk_ingest(
                 print(f"   - {err}")
 
     except (OSError, psycopg.Error, RuntimeError, ValueError) as e:
+        ingester.mark_import_run_failed(str(e))
         print(f"❌ Bulk ingestion failed: {e}", file=sys.stderr)
         logging.getLogger(__name__).exception("Bulk ingestion failed")
         sys.exit(1)
     except SECBulkIngestAbort as e:
+        ingester.mark_import_run_failed(str(e))
         print(f"❌ Bulk ingestion aborted: {e}", file=sys.stderr)
         print("   Checkpoint saved; resume later with the same command.")
         sys.exit(1)

@@ -279,17 +279,16 @@ class TestIngestFullUniverse:
         ):
             await ingester.ingest_full_universe()
 
-        # Strip the initial "fresh start" save and the final save; the core
-        # sequence must be commit -> save per company (never save -> commit).
+        # Strip the initial "fresh start" save. The next 10 events must be the
+        # 5 per-company commit -> save pairs (never save -> commit). Later
+        # events come from the final checkpoint save and the import-run finish.
         core = list(events)
         if core and core[0] == "save":
             core = core[1:]
-        if core and core[-1] == "save":
-            core = core[:-1]
 
-        assert len(core) == 10  # 5 companies: commit+save each
-        assert core[0::2] == ["commit"] * 5
-        assert core[1::2] == ["save"] * 5
+        assert len(core) >= 10
+        assert core[0:10:2] == ["commit"] * 5
+        assert core[1:10:2] == ["save"] * 5
 
     @pytest.mark.asyncio
     async def test_filing_id_map_passed_to_process_company_facts(self, tmp_path):
@@ -342,6 +341,39 @@ class TestIngestFullUniverse:
         assert mock_facts.call_count == 0
         assert len(stats.errors) == 5
         assert all(e.get("expected_404") for e in stats.errors)
+
+    @pytest.mark.asyncio
+    async def test_import_run_and_raw_documents_recorded(self, tmp_path):
+        """The bulk path must write an import_run and raw_document records."""
+        ingester, client = _make_ingester(tmp_path)
+        _configure_client(client, _five_companies())
+
+        ingester.import_runs = MagicMock()
+        ingester.import_runs.create = MagicMock(return_value={"id": "run-uuid-1"})
+        ingester.import_runs.update = MagicMock()
+
+        with (
+            patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
+            patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
+            patch.object(
+                ingester, "_process_submissions_from_api", new_callable=AsyncMock
+            ),
+            patch.object(
+                ingester, "_process_company_facts", new_callable=AsyncMock
+            ),
+            patch.object(ingester, "_record_raw_document") as mock_record,
+        ):
+            await ingester.ingest_full_universe()
+
+        ingester.import_runs.create.assert_called_once()
+        success_calls = [
+            c
+            for c in ingester.import_runs.update.call_args_list
+            if c.kwargs.get("status") == "success"
+        ]
+        assert len(success_calls) == 1
+        # 2 raw docs (submissions + companyfacts) per company × 5 companies.
+        assert mock_record.call_count == 10
 
     @pytest.mark.asyncio
     async def test_server_error_is_skipped_without_crashing(self, tmp_path):
