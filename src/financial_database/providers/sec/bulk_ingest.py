@@ -39,6 +39,7 @@ from financial_database.providers.sec.models import (
     SECCompanyFacts,
     SECCompanyFactValue,
     SECSubmissions,
+    infer_country,
 )
 from financial_database.providers.sec.parser import (
     ParsedFinancialFact,
@@ -738,7 +739,10 @@ class SECBulkIngester:
                 from financial_database.db.repositories import CompanyRepository
 
                 company_repo = CompanyRepository(self.conn)
-                company = company_repo.create(legal_name=name.strip())
+                company = company_repo.create(
+                    legal_name=name.strip(),
+                    country=infer_country(exchange),
+                )
                 if company:
                     company_id = str(company["id"])
                     stats.companies_inserted += 1

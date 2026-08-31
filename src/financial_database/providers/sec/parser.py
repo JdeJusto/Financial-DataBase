@@ -9,6 +9,7 @@ from financial_database.providers.sec.models import (
     SECCompany,
     SECCompanyFacts,
     SECSubmissions,
+    infer_country,
     normalize_accession_number,
     normalize_cik,
     normalize_exchange,
@@ -98,7 +99,7 @@ class SECParser:
         parsed = ParsedCompany(
             cik=normalize_cik(sec_company.cik),
             legal_name=sec_company.name.strip(),
-            country="USA",
+            country=infer_country(sec_company.exchange),
             currency="USD",
         )
 

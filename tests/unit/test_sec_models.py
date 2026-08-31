@@ -9,6 +9,7 @@ from financial_database.providers.sec.models import (
     SECFiling,
     SECSubmissions,
     get_exchange_mappings,
+    infer_country,
     normalize_accession_number,
     normalize_cik,
     normalize_exchange,
@@ -232,3 +233,21 @@ class TestSECCompanyFacts:
     def test_sec_company_facts_normalized_cik(self):
         facts = SECCompanyFacts(cik="320193", entity_name="Test")
         assert facts.normalized_cik == "0000320193"
+
+
+class TestInferCountry:
+    """Tests for country inference from SEC exchange."""
+
+    def test_us_exchange(self):
+        assert infer_country("NASDAQ") == "USA"
+        assert infer_country("NYSE") == "USA"
+        assert infer_country("CBOE") == "USA"
+        assert infer_country("Nasdaq") == "USA"
+
+    def test_foreign_exchange(self):
+        assert infer_country("London Stock Exchange") == "FOREIGN"
+
+    def test_missing_exchange(self):
+        assert infer_country(None) == "UNKNOWN"
+        assert infer_country("") == "UNKNOWN"
+        assert infer_country("   ") == "UNKNOWN"

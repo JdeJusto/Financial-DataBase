@@ -175,3 +175,31 @@ def normalize_exchange(sec_exchange: str | None) -> ExchangeMapping | None:
 def get_exchange_mappings() -> list[ExchangeMapping]:
     """Get all known SEC exchange mappings for seeding exchanges table."""
     return SEC_EXCHANGE_MAPPINGS
+
+
+_US_EXCHANGE_CODES = {
+    "NASDAQ",
+    "NYSE",
+    "NYSE AMERICAN",
+    "NYSE ARCA",
+    "BATS",
+    "CBOE",
+    "OTC",
+    "OTCQB",
+    "OTCQX",
+    "PINK",
+}
+
+
+def infer_country(sec_exchange: str | None) -> str:
+    """Infer a company's country from its SEC exchange (best effort).
+
+    The SEC tickers file does not carry country. Known US exchanges map to
+    'USA', other non-empty exchanges map to 'FOREIGN', and a missing exchange
+    maps to 'UNKNOWN'.
+    """
+    if not sec_exchange or not sec_exchange.strip():
+        return "UNKNOWN"
+    if sec_exchange.strip().upper() in _US_EXCHANGE_CODES:
+        return "USA"
+    return "FOREIGN"
