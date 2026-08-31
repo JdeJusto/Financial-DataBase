@@ -4,12 +4,14 @@ Covers the bug where a stale checkpoint caused zero companies to be processed,
 and the ``force`` flag that resets progress.
 """
 
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from financial_database.providers.sec.bulk_ingest import (
     BulkImportCheckpoint,
+    BulkImportStats,
     SECBulkIngester,
 )
 from financial_database.providers.sec.client import SECNotFoundError
@@ -380,3 +382,58 @@ class TestIngestFullUniverse:
         result = ingester._parse_company_facts_dict(facts_dict)
         values = result["us-gaap"]["Assets"].values
         assert {v.unit for v in values} == {"USD", "shares"}
+
+    @pytest.mark.asyncio
+    async def test_process_company_facts_commits_before_batches(self, tmp_path):
+        """Each 500-fact batch must be a real commit, not a nested savepoint.
+
+        _process_company_facts must commit the pending outer transaction first,
+        so each conn.transaction() is a durable commit.
+        """
+        ingester, _ = _make_ingester(tmp_path)
+
+        facts = []
+        for _ in range(1200):  # 3 batches of 500
+            f = MagicMock()
+            f.concept = "Concept"
+            f.namespace = "us-gaap"
+            f.value = 1.0
+            f.unit = "USD"
+            f.period_start = None
+            f.period_end = None
+            f.fiscal_year = 2023
+            f.fiscal_period = "FY"
+            f.provider_id = _PROVIDER_ID
+            f.source_id = "src"
+            f.filing_id = None
+            f.form = "10-K"
+            f.filing_date = None
+            f.frame = None
+            facts.append(f)
+
+        ingester.parser = MagicMock()
+        ingester.parser.parse_company_facts = MagicMock(return_value=facts)
+        ingester.facts = MagicMock()
+        ingester.facts.create_batch = MagicMock(return_value=[])
+
+        events = []
+        ingester.conn.commit = MagicMock(
+            side_effect=lambda: events.append("commit")
+        )
+        ingester.conn.transaction = MagicMock(
+            side_effect=lambda: (
+                events.append("transaction") or contextlib.nullcontext()
+            )
+        )
+
+        await ingester._process_company_facts(
+            "0000320193",
+            {"facts": {}, "entity_name": "Apple Inc."},
+            {},
+            _PROVIDER_ID,
+            BulkImportStats(),
+        )
+
+        # Commit the outer transaction first, then one transaction per batch.
+        assert events[0] == "commit"
+        assert events.count("transaction") == 3

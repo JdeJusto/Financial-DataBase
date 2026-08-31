@@ -1102,6 +1102,12 @@ class SECBulkIngester:
         facts_processed = 0
         checkpoint_timer = time.monotonic()
 
+        # Commit any pending work (e.g., filings inserted before fact
+        # processing) so the per-batch transaction() below is a real,
+        # durable commit rather than a savepoint nested inside the outer
+        # transaction.
+        self.conn.commit()
+
         # Process facts in chunks
         for i in range(0, facts_total, FACTS_PER_TRANSACTION):
             chunk = parsed_facts[i : i + FACTS_PER_TRANSACTION]
