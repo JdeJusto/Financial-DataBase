@@ -30,7 +30,7 @@ class ExchangeRepository:
                    RETURNING id, code, name, country, timezone, currency, created_at""",
                 (code, name, country, timezone, currency),
             )
-            return cur.fetchone()
+            rows = cur.fetchall(); return rows[0] if rows else None
 
     def get_by_code(self, code: str) -> dict | None:
         """Get exchange by code (ticker prefix like NASDAQ, NYSE)."""

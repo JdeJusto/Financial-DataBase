@@ -55,7 +55,7 @@ class FilingRepository:
                     amended_by_filing_id,
                 ),
             )
-            return cur.fetchone()
+            rows = cur.fetchall(); return rows[0] if rows else None
 
     def get_by_company_id(self, company_id: str) -> list[dict]:
         """Get all filings for a company."""

@@ -43,7 +43,7 @@ class RawDocumentRepository:
                     is_processed,
                 ),
             )
-            return cur.fetchone()
+            rows = cur.fetchall(); return rows[0] if rows else None
 
     def get_by_provider(self, provider_id: str) -> list[dict]:
         """Get raw documents for a provider."""

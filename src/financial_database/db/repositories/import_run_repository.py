@@ -26,7 +26,7 @@ class ImportRunRepository:
                    duration_seconds""",
                 (provider_id, pipeline, status),
             )
-            return cur.fetchone()
+            rows = cur.fetchall(); return rows[0] if rows else None
 
     def update(
         self,

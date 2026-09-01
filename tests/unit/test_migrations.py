@@ -17,7 +17,7 @@ class TestMigrationDiscovery:
         """Test that we have exactly 19 migrations."""
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
         sql_files = list(migrations_dir.glob("*.sql"))
-        assert len(sql_files) == 19
+        assert len(sql_files) == 20
 
     def test_migrations_are_numbered(self):
         """Test that all migrations are properly numbered."""
@@ -54,6 +54,7 @@ class TestMigrationDiscovery:
             "0017_fix_filings_nullable_period",
             "0018_add_namespace_frame_to_financial_facts",
             "0019_fix_financial_facts_dedup",
+            "0020_extend_financial_facts_columns",
         ]
         assert names == expected
 
@@ -75,7 +76,7 @@ class TestMigrationRunner:
         from financial_database.db.migrations.runner import get_migration_files
 
         files = get_migration_files()
-        assert len(files) == 19
+        assert len(files) == 20
         assert all(isinstance(f, tuple) and len(f) == 2 for f in files)
 
 

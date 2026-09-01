@@ -31,7 +31,8 @@ class CompanyRepository:
                    RETURNING id, legal_name, country, sector, industry, currency, website, created_at, updated_at""",
                 (legal_name, country, sector, industry, currency, website),
             )
-            return cur.fetchone()
+            rows = cur.fetchall()
+            return rows[0] if rows else None
 
     def update(
         self,
@@ -73,7 +74,7 @@ class CompanyRepository:
                 f"UPDATE companies SET {', '.join(set_parts)} WHERE id = %s RETURNING id, legal_name, country, sector, industry, currency, website, created_at, updated_at",
                 params,
             )
-            return cur.fetchone()
+            return cur.fetchall()[0] if cur.fetchall() else None
 
     def get_by_id(self, company_id: str) -> dict | None:
         """Get company by internal ID."""
@@ -82,7 +83,7 @@ class CompanyRepository:
                 "SELECT id, legal_name, country, sector, industry, currency, website, created_at, updated_at FROM companies WHERE id = %s",
                 (company_id,),
             )
-            return cur.fetchone()
+            return cur.fetchall()[0] if cur.fetchall() else None
 
     def list_all(self, limit: int = 100, offset: int = 0) -> list[dict]:
         """List companies with pagination."""

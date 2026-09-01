@@ -60,7 +60,7 @@ class FinancialFactRepository:
                     frame,
                 ),
             )
-            return cur.fetchone()
+            rows = cur.fetchall(); return rows[0] if rows else None
 
     def get_by_company_id(self, company_id: str) -> list[dict[str, Any]]:
         """Get all financial facts for a company."""

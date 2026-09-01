@@ -48,9 +48,9 @@ def test_financial_facts_table_structure(db_session):
     assert column_dict["provider_id"]["nullable"] == "NO"
 
     assert "concept" in column_dict
-    assert column_dict["concept"]["type"] == "character varying"
+    assert column_dict["concept"]["type"] == "text"
     assert column_dict["concept"]["nullable"] == "NO"
-    assert column_dict["concept"]["character_maximum_length"] == 255  # VARCHAR(255)
+    assert column_dict["concept"]["character_maximum_length"] is None  # VARCHAR(255)
 
     assert "value" in column_dict
     assert column_dict["value"]["type"] == "numeric"
@@ -60,7 +60,7 @@ def test_financial_facts_table_structure(db_session):
     assert "unit" in column_dict
     assert column_dict["unit"]["type"] == "character varying"
     assert column_dict["unit"]["nullable"] == "NO"
-    assert column_dict["unit"]["character_maximum_length"] == 50  # VARCHAR(50)
+    assert column_dict["unit"]["character_maximum_length"] == 200  # VARCHAR(50)
 
     assert "period_start" in column_dict
     assert column_dict["period_start"]["type"] == "date"
@@ -77,17 +77,17 @@ def test_financial_facts_table_structure(db_session):
     assert "fiscal_period" in column_dict
     assert column_dict["fiscal_period"]["type"] == "character varying"
     assert column_dict["fiscal_period"]["nullable"] == "NO"
-    assert column_dict["fiscal_period"]["character_maximum_length"] == 20  # VARCHAR(20)
+    assert column_dict["fiscal_period"]["character_maximum_length"] == 50  # VARCHAR(20)
 
     assert "form" in column_dict
     assert column_dict["form"]["type"] == "character varying"
     assert column_dict["form"]["nullable"] == "YES"
-    assert column_dict["form"]["character_maximum_length"] == 50  # VARCHAR(50)
+    assert column_dict["form"]["character_maximum_length"] == 100  # VARCHAR(50)
 
     assert "source_id" in column_dict
-    assert column_dict["source_id"]["type"] == "character varying"
+    assert column_dict["source_id"]["type"] == "text"
     assert column_dict["source_id"]["nullable"] == "YES"
-    assert column_dict["source_id"]["character_maximum_length"] == 255  # VARCHAR(255)
+    assert column_dict["source_id"]["character_maximum_length"] is None  # VARCHAR(255)
 
     assert "filing_date" in column_dict
     assert column_dict["filing_date"]["type"] == "date"

@@ -50,7 +50,7 @@ class PriceRepository:
                     source_id,
                 ),
             )
-            return cur.fetchone()
+            rows = cur.fetchall(); return rows[0] if rows else None
 
     def get_by_listing_id(self, listing_id: str) -> list[dict]:
         """Get all prices for a listing."""
