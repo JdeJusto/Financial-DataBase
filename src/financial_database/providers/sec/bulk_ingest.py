@@ -543,9 +543,58 @@ class SECBulkIngester:
 
         provider_id = self._get_provider_id()
 
-        # Process each company
+        # Sort companies by CIK to ensure proper checkpoint ordering
+        companies_to_process.sort(key=lambda x: x[0])
+
+        logger.info(f"Found {len(companies_to_process)} companies to process")
+
+        # Apply limit if specified
+        if limit is not None and limit > 0:
+            companies_to_process = companies_to_process[:limit]
+            logger.info(f"Limited to first {limit} companies")
+
+        # Handle checkpoint resume logic
+        # If checkpoint.last_processed_cik is not in the current company list,
+        # we need to find the appropriate starting point to avoid skipping all companies
+        start_index = 0
+        if checkpoint.last_processed_cik:
+            # Find if the checkpoint CIK exists in our current company list
+            cik_list = [cik for cik, _ in companies_to_process]
+            try:
+                # Find the index of the checkpoint CIK
+                checkpoint_index = cik_list.index(checkpoint.last_processed_cik)
+                # Start from the next company after the checkpoint
+                start_index = checkpoint_index + 1
+                logger.debug(
+                    "Found checkpoint CIK in company list",
+                    extra={
+                        "checkpoint_cik": checkpoint.last_processed_cik,
+                        "start_index": start_index,
+                    },
+                )
+            except ValueError:
+                # Checkpoint CIK not found in current list
+                # Find the first company with CIK > checkpoint.last_processed_cik
+                # or start from beginning if all CIKs are <= checkpoint.last_processed_cik
+                for i, (cik, _) in enumerate(companies_to_process):
+                    if cik > checkpoint.last_processed_cik:
+                        start_index = i
+                        break
+                else:
+                    # All CIKs are <= checkpoint.last_processed_cik, start from beginning
+                    start_index = 0
+                    logger.warning(
+                        "Checkpoint last_processed_cik is higher than all CIKs in current universe, starting from beginning",
+                        extra={
+                            "checkpoint_cik": checkpoint.last_processed_cik,
+                            "max_cik_in_universe": companies_to_process[-1][0] if companies_to_process else None,
+                        },
+                    )
+
+        # Process each company starting from start_index
         processed_count = 0
-        for cik, company_facts in companies_to_process:
+        for i in range(start_index, len(companies_to_process)):
+            cik, company_facts = companies_to_process[i]
             # Skip if already processed (resume from checkpoint)
             if checkpoint.last_processed_cik and cik <= checkpoint.last_processed_cik:
                 logger.debug("Skipping already processed CIK", extra={"cik": cik})
@@ -856,8 +905,56 @@ class SECBulkIngester:
         json_files = sorted(submissions_dir.glob("*.json"))
         logger.info(f"Found {len(json_files)} submission files to process")
 
-        # Process each file
-        for json_file in json_files:
+        # Handle checkpoint resume logic
+        # If checkpoint.last_processed_cik is not in the current file list,
+        # we need to find the appropriate starting point to avoid skipping all files
+        start_index = 0
+        if checkpoint.last_processed_cik:
+            # Extract CIKs from filenames
+            cik_list = []
+            for json_file in json_files:
+                filename = json_file.stem
+                if filename.startswith("CIK"):
+                    cik = filename[3:].zfill(10)
+                    cik_list.append(cik)
+
+            try:
+                # Find the index of the checkpoint CIK
+                checkpoint_index = cik_list.index(checkpoint.last_processed_cik)
+                # Start from the next file after the checkpoint
+                start_index = checkpoint_index + 1
+                logger.debug(
+                    "Found checkpoint CIK in file list",
+                    extra={
+                        "checkpoint_cik": checkpoint.last_processed_cik,
+                        "start_index": start_index,
+                    },
+                )
+            except ValueError:
+                # Checkpoint CIK not found in current list
+                # Find the first file with CIK > checkpoint.last_processed_cik
+                # or start from beginning if all CIKs are <= checkpoint.last_processed_cik
+                for i, json_file in enumerate(json_files):
+                    filename = json_file.stem
+                    if filename.startswith("CIK"):
+                        cik = filename[3:].zfill(10)
+                        if cik > checkpoint.last_processed_cik:
+                            start_index = i
+                            break
+                else:
+                    # All CIKs are <= checkpoint.last_processed_cik, start from beginning
+                    start_index = 0
+                    logger.warning(
+                        "Checkpoint last_processed_cik is higher than all CIKs in current universe, starting from beginning",
+                        extra={
+                            "checkpoint_cik": checkpoint.last_processed_cik,
+                            "max_cik_in_universe": cik_list[-1] if cik_list else None,
+                        },
+                    )
+
+        # Process each file starting from start_index
+        for i in range(start_index, len(json_files)):
+            json_file = json_files[i]
             # Extract CIK from filename (CIK##########.json)
             filename = json_file.stem
             if not filename.startswith("CIK"):
@@ -1438,15 +1535,53 @@ class SECBulkIngester:
 
         # Load or create checkpoint
         if checkpoint is None:
+            # Compute source file checksum for new checkpoint
+            tickers_path = self._raw_dir / "bulk_downloads" / "company_tickers.json"
+            source_checksum = ""
+            if tickers_path.exists():
+                source_checksum = self._compute_file_checksum(tickers_path)
+
             checkpoint = BulkImportCheckpoint(
                 dataset="full_universe",
                 provider=self.SEC_PROVIDER_NAME,
                 source_file=source,
+                source_file_checksum=source_checksum,
             )
             loaded = self._load_checkpoint("full_universe")
             # Reuse prior progress only when it belongs to the same source.
             if loaded and not force and loaded.source_file == source:
-                checkpoint = loaded
+                # Validate checkpoint source file checksum (if available)
+                # For full_universe, we validate against the local company_tickers.json file
+                if tickers_path.exists():
+                    current_checksum = self._compute_file_checksum(tickers_path)
+                    if loaded.source_file_checksum and loaded.source_file_checksum != current_checksum:
+                        logger.warning(
+                            "Checkpoint source file checksum mismatch, starting fresh",
+                            extra={
+                                "checkpoint_checksum": loaded.source_file_checksum,
+                                "current_checksum": current_checksum,
+                            },
+                        )
+                    else:
+                        checkpoint = loaded
+                        logger.info(
+                            "Resuming from checkpoint",
+                            extra={
+                                "last_processed_cik": checkpoint.last_processed_cik,
+                                "companies_processed": checkpoint.companies_processed,
+                            },
+                        )
+                else:
+                    # If the source file doesn't exist locally, we can't validate checksum
+                    # Fall back to source_file matching only (existing behavior)
+                    checkpoint = loaded
+                    logger.info(
+                        "Resuming from checkpoint (source file not available for checksum validation)",
+                        extra={
+                            "last_processed_cik": checkpoint.last_processed_cik,
+                            "companies_processed": checkpoint.companies_processed,
+                        },
+                    )
 
         # A stale checkpoint (e.g., from a different company universe) can cause
         # every company to be skipped. ``force`` explicitly resets prior progress.
@@ -1494,8 +1629,47 @@ class SECBulkIngester:
             f"Processing {len(companies)} companies (of {total_companies} total)"
         )
 
-        # Process each company
-        for company in companies:
+        # Handle checkpoint resume logic
+        # If checkpoint.last_processed_cik is not in the current company list,
+        # we need to find the appropriate starting point to avoid skipping all companies
+        start_index = 0
+        if checkpoint.last_processed_cik:
+            # Find if the checkpoint CIK exists in our current company list
+            cik_list = [c.normalized_cik for c in companies]
+            try:
+                # Find the index of the checkpoint CIK
+                checkpoint_index = cik_list.index(checkpoint.last_processed_cik)
+                # Start from the next company after the checkpoint
+                start_index = checkpoint_index + 1
+                logger.debug(
+                    "Found checkpoint CIK in company list",
+                    extra={
+                        "checkpoint_cik": checkpoint.last_processed_cik,
+                        "start_index": start_index,
+                    },
+                )
+            except ValueError:
+                # Checkpoint CIK not found in current list
+                # Find the first company with CIK > checkpoint.last_processed_cik
+                # or start from beginning if all CIKs are <= checkpoint.last_processed_cik
+                for i, company in enumerate(companies):
+                    if company.normalized_cik > checkpoint.last_processed_cik:
+                        start_index = i
+                        break
+                else:
+                    # All CIKs are <= checkpoint.last_processed_cik, start from beginning
+                    start_index = 0
+                    logger.warning(
+                        "Checkpoint last_processed_cik is higher than all CIKs in current universe, starting from beginning",
+                        extra={
+                            "checkpoint_cik": checkpoint.last_processed_cik,
+                            "max_cik_in_universe": companies[-1].normalized_cik if companies else None,
+                        },
+                    )
+
+        # Process each company starting from start_index
+        for i in range(start_index, len(companies)):
+            company = companies[i]
             cik = company.normalized_cik
 
             # Skip if already processed (resume from checkpoint)

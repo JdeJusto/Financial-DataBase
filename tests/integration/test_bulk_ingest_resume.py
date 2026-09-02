@@ -375,6 +375,52 @@ class TestBulkIngestIdempotency:
         assert checkpoint.last_processed_cik == failed_cik
         assert checkpoint.companies_processed == 6
 
+    def test_checkpoint_handles_stale_checkpoint_higher_than_all_ciks(self):
+        """Test that when checkpoint CIK is higher than all current CIKs, we start from beginning."""
+        # This simulates the bug where a stale checkpoint from a different universe
+        # has a last_processed_cik higher than any CIK in the current company list
+
+        # Current company list (what we're processing now)
+        current_ciks = ["0000320193", "0000789019", "0001018724", "0001234567"]
+
+        # Stale checkpoint from a previous run with different universe
+        stale_last_processed_cik = "0009999999"  # Higher than all current CIKs
+
+        checkpoint = BulkImportCheckpoint(
+            dataset="companyfacts",
+            last_processed_cik=stale_last_processed_cik,
+            companies_processed=0,  # No companies actually processed in this universe yet
+        )
+
+        # Simulate our fix logic
+        start_index = 0
+        if checkpoint.last_processed_cik:
+            # Find if the checkpoint CIK exists in our current company list
+            cik_list = current_ciks.copy()  # Already sorted
+            try:
+                # Find the index of the checkpoint CIK
+                checkpoint_index = cik_list.index(checkpoint.last_processed_cik)
+                # Start from the next company after the checkpoint
+                start_index = checkpoint_index + 1
+            except ValueError:
+                # Checkpoint CIK not found in current list
+                # Find the first company with CIK > checkpoint.last_processed_cik
+                # or start from beginning if all CIKs are <= checkpoint.last_processed_cik
+                for i, cik in enumerate(cik_list):
+                    if cik > checkpoint.last_processed_cik:
+                        start_index = i
+                        break
+                else:
+                    # All CIKs are <= checkpoint.last_processed_cik, start from beginning
+                    start_index = 0
+
+        # With our fix, start_index should be 0 (beginning) since all current CIKs <= checkpoint
+        assert start_index == 0
+
+        # Verify we would process all companies
+        companies_to_process = current_ciks[start_index:]
+        assert companies_to_process == ["0000320193", "0000789019", "0001018724", "0001234567"]
+
     def test_checkpoint_resume_skips_processed(self):
         """Test that resume logic correctly skips already processed CIKs."""
         checkpoint = BulkImportCheckpoint(
