@@ -307,8 +307,13 @@ def validate_financial_fact(fact: ParsedFinancialFact) -> list[str]:
     if fact.period_end is None:
         errors.append("period_end is required")
 
-    if fact.fiscal_year is None or fact.fiscal_year < 1900 or fact.fiscal_year > 2100:
-        errors.append("fiscal_year must be valid")
+    # Validate fiscal_year: must be between 1990 and 2030 (with some flexibility for forward-looking data)
+    if fact.fiscal_year is None:
+        errors.append("fiscal_year is required")
+    elif fact.fiscal_year < 1990 or fact.fiscal_year > 2030:
+        errors.append(
+            f"fiscal_year {fact.fiscal_year} is outside valid range (1990-2030)"
+        )
 
     if not fact.fiscal_period or not fact.fiscal_period.strip():
         errors.append("fiscal_period is required")

@@ -3,6 +3,7 @@
 Test script to validate the checkpoint resume logic fix.
 """
 
+
 def test_checkpoint_resume_logic():
     """Test the checkpoint resume logic for various scenarios."""
 
@@ -13,7 +14,10 @@ def test_checkpoint_resume_logic():
 
     # Test Case 1: Normal case - checkpoint CIK exists in list
     print("Test Case 1: Normal case - checkpoint CIK exists in list")
-    companies = [MockCompany(cik) for cik in ["0000320193", "0000789019", "0001018724", "0001234567"]]
+    companies = [
+        MockCompany(cik)
+        for cik in ["0000320193", "0000789019", "0001018724", "0001234567"]
+    ]
     checkpoint_last_processed_cik = "0000789019"
 
     # Apply our logic
@@ -21,10 +25,17 @@ def test_checkpoint_resume_logic():
     try:
         checkpoint_index = cik_list.index(checkpoint_last_processed_cik)
         start_index = checkpoint_index + 1
-        print(f"  Checkpoint CIK found at index {checkpoint_index}, starting from index {start_index}")
-        print(f"  Will process companies: {[c.normalized_cik for c in companies[start_index:]]}")
+        print(
+            f"  Checkpoint CIK found at index {checkpoint_index}, starting from index {start_index}"
+        )
+        print(
+            f"  Will process companies: {[c.normalized_cik for c in companies[start_index:]]}"
+        )
         assert start_index == 2
-        assert [c.normalized_cik for c in companies[start_index:]] == ["0001018724", "0001234567"]
+        assert [c.normalized_cik for c in companies[start_index:]] == [
+            "0001018724",
+            "0001234567",
+        ]
         print("  ✓ PASS\n")
     except ValueError:
         print("  ✗ FAIL: Checkpoint CIK not found\n")
@@ -32,7 +43,10 @@ def test_checkpoint_resume_logic():
 
     # Test Case 2: Checkpoint CIK not found, but there are CIKs greater than it
     print("Test Case 2: Checkpoint CIK not found, but there are CIKs greater than it")
-    companies = [MockCompany(cik) for cik in ["0000320193", "0000789019", "0001018724", "0001234567"]]
+    companies = [
+        MockCompany(cik)
+        for cik in ["0000320193", "0000789019", "0001018724", "0001234567"]
+    ]
     checkpoint_last_processed_cik = "0000500000"  # Between 0000320193 and 0000789019
 
     # Apply our logic
@@ -52,15 +66,26 @@ def test_checkpoint_resume_logic():
         else:
             start_index = 0  # All CIKs are <= checkpoint
 
-        print(f"  Checkpoint CIK not found, first CIK > checkpoint at index {start_index}")
-        print(f"  Will process companies: {[c.normalized_cik for c in companies[start_index:]]}")
+        print(
+            f"  Checkpoint CIK not found, first CIK > checkpoint at index {start_index}"
+        )
+        print(
+            f"  Will process companies: {[c.normalized_cik for c in companies[start_index:]]}"
+        )
         assert start_index == 1  # Should start from 0000789019
-        assert [c.normalized_cik for c in companies[start_index:]] == ["0000789019", "0001018724", "0001234567"]
+        assert [c.normalized_cik for c in companies[start_index:]] == [
+            "0000789019",
+            "0001018724",
+            "0001234567",
+        ]
         print("  ✓ PASS\n")
 
     # Test Case 3: Checkpoint CIK higher than all CIKs in list (the main issue we're fixing)
     print("Test Case 3: Checkpoint CIK higher than all CIKs in list (main fix)")
-    companies = [MockCompany(cik) for cik in ["0000320193", "0000789019", "0001018724", "0001234567"]]
+    companies = [
+        MockCompany(cik)
+        for cik in ["0000320193", "0000789019", "0001018724", "0001234567"]
+    ]
     checkpoint_last_processed_cik = "0009999999"  # Higher than all
 
     # Apply our logic
@@ -80,10 +105,19 @@ def test_checkpoint_resume_logic():
         else:
             start_index = 0  # All CIKs are <= checkpoint (this is our fix)
 
-        print(f"  Checkpoint CIK not found, all CIKs <= checkpoint, starting from index {start_index}")
-        print(f"  Will process companies: {[c.normalized_cik for c in companies[start_index:]]}")
+        print(
+            f"  Checkpoint CIK not found, all CIKs <= checkpoint, starting from index {start_index}"
+        )
+        print(
+            f"  Will process companies: {[c.normalized_cik for c in companies[start_index:]]}"
+        )
         assert start_index == 0  # Should start from beginning (our fix)
-        assert [c.normalized_cik for c in companies[start_index:]] == ["0000320193", "0000789019", "0001018724", "0001234567"]
+        assert [c.normalized_cik for c in companies[start_index:]] == [
+            "0000320193",
+            "0000789019",
+            "0001018724",
+            "0001234567",
+        ]
         print("  ✓ PASS\n")
 
     # Test Case 4: Empty company list
@@ -114,6 +148,7 @@ def test_checkpoint_resume_logic():
 
     print("All tests passed!")
     return True
+
 
 if __name__ == "__main__":
     test_checkpoint_resume_logic()

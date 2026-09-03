@@ -1,197 +1,195 @@
-# Financial Database
+# Base de Datos Financiera
 
-## Features
+## Características
 
-- Normalized schema for financial data
-- Support for multiple data providers
-- Full provenance tracking with source identifiers
-- Audit trails for all import operations
-- Flexible design to accommodate various financial data types
-- Constraint-based data integrity
-- Indexed for common query patterns
-- **SEC EDGAR ingestion pipeline** - Production-quality SEC data import
+- Esquema normalizado para datos financieros
+- Soporte para varios proveedores de datos
+- Seguimiento de procedencia completo con identificadores de origen
+- Rastreo de auditoría para todas las operaciones de importación
+- Diseño flexible para acomodar varios tipos de datos financieros
+- Índices para patrones de consulta comunes
+- **Pipeline de ingestión SEC EDGAR** - Importación de datos de producción
 
-## Schema Overview
+## Descripción General del Esquema
 
-The database consists of the following core tables:
+La base de datos consta de las siguientes tablas principales:
 
-- `companies` - Basic company information
-- `company_identifiers` - Various company identifiers (CIK, FIGI, etc.)
-- `company_listings` - Exchange listings for companies
-- `exchanges` - Stock exchanges
-- `data_providers` - Sources of financial data
-- `filings` - SEC filings and similar regulatory documents
-- `financial_facts` - Normalized financial statement data
-- `prices` - Historical price and volume data
-- `dividends` - Dividend declarations and payments
-- `splits` - Stock split events
-- `raw_documents` - Metadata for preserved raw data files
-- `import_runs` - Audit trail for data import operations
+- `companies` - Información básica de empresas
+- `company_identifiers` - Varios identificadores de empresas (CIK, FIGI, etc.)
+- `company_listings` - Cotizaciones en bolsa de las empresas
+- `exchanges` - Bolsas de valores
+- `data_providers` - Fuentes de datos financieros
+- `filings` - Presentaciones regulatorias SEC y documentos similares
+- `financial_facts` - Datos financieros normalizados de estados financieros
+- `prices` - Datos históricos de precios y volúmenes
+- `dividends` - Déclaraciones y pagos de dividendos
+- `splits` - Eventos de división de acciones
+- `raw_documents` - Metadatos de archivos de datos raw preservados
+- `import_runs` - Registro de auditoría para operaciones de importación
 
-## Getting Started
+## Empezando
 
-### Prerequisites
+### Prerrequisitos
 
 - PostgreSQL 12+
-- Python 3.8+ (for running tests and migrations)
+- Python 3.8+ (para ejecutar pruebas y migraciones)
 
-### Installation
+### Instalación
 
-1. Clone the repository
-2. Copy `.env.example` to `.env` and configure your database connection
-3. Run the database migrations:
+1. Clonar el repositorio
+2. Copiar `.env.example` a `.env` y configurar la conexión a la base de datos
+3. Ejecutar las migraciones de base de datos:
    ```bash
    ./scripts/migrate.sh
    ```
-4. Run the test suite to verify everything is working:
+4. Ejecutar la suite de pruebas para verificar que todo funciona:
    ```bash
    python -m pytest tests/
    ```
 
-### SEC EDGAR Setup
+### Configuración SEC EDGAR
 
-To use the SEC ingestion pipeline, you must configure a User-Agent as required by SEC:
+Para usar el pipeline de ingestión SEC, debe configurar un User-Agent según lo requiera la SEC:
 
-1. Edit `.env` and set `SEC_USER_AGENT`:
+1. Editar `.env` y configurar `SEC_USER_AGENT`:
    ```
-   SEC_USER_AGENT=your-app/1.0 contact@yourdomain.com
+   SEC_USER_AGENT=tu-aplicacion/1.0 contacto@tudominio.com
    ```
-   The SEC requires a unique, descriptive User-Agent with contact information.
+   La SEC exige un User-Agent único y descriptivo con información de contacto.
 
-2. Configure raw data storage (optional):
+2. Configurar el almacenamiento de datos raw (opcional):
    ```
    DATA_RAW_DIR=./data/raw
    ```
-   Raw SEC responses are stored here for provenance and re-processing.
+   Las respuestas SEC raw se guardan aquí para procedencia y re-procesamiento.
 
-## SEC EDGAR Ingestion
+## Ingestión SEC EDGAR
 
-The `financial-db` CLI provides SEC ingestion commands:
+El CLI `financial-db` provee comandos de ingestión SEC:
 
 ```bash
-# Seed SEC provider and exchanges
+# Semilla de proveedor y bolsas SEC
 financial-db sec seed-provider
 financial-db sec seed-exchanges
 
-# Import SEC company universe (tickers, CIKs, exchanges)
+# Importar universo de empresas (tickers, CIK, exchanges)
 financial-db sec universe
 
-# Import filings for a specific company (by CIK)
+# Importar presentaciones para una empresa específica (por CIK)
 financial-db sec submissions 0000320193
 
-# Import XBRL financial facts (CompanyFacts) for a specific company
+# Importar hechos XBRL (CompanyFacts) para una empresa específica
 financial-db sec companyfacts 0000320193
 
-# Full sync for a single company (universe + filings + facts)
+# Sincronización completa para una sola empresa
 financial-db sec sync 0000320193
 
-# Dry-run any command to preview without writing
+# Ejecutar cualquier comando en modo seco (preview sin escribir)
 financial-db sec sync 0000320193 --dry-run
 ```
 
-**Targeted imports** (e.g., `--cik 0000320193`) are the primary workflow.
-Full-universe sync (`financial-db sec sync-all --confirm`) is available but involves thousands of HTTP requests.
+**Importaciones dirigidas** (p. ej., `--cik 0000320193`) son el flujo de trabajo principal. La sincronización del universo completo (`financial-db sec sync-all --confirm`) está disponible pero implica miles de solicitudes HTTP.
 
-### Historical Bulk Ingestion (Phase 3.5/3.6/3.6.9)
+### Ingestión Bulk Histórica (Fase 3.5/3.6/3.6.9)
 
-For loading the complete SEC EDGAR universe from API-based bulk ingestion:
+Para cargar el universo completo SEC EDGAR desde ingestion based en API:
 
 ```bash
-# Dry run to validate setup
+# Ejecutar dry-run para validar la configuración
 financial-db sec bulk-ingest --dry-run
 
-# Full bulk ingestion (API-based, processes all companies)
+# Ingestión bulk completa (based en API, procesa todas las empresas)
 financial-db sec bulk-ingest --confirm
 
-# Process with limit for testing
+# Procesar con límite para testing
 financial-db sec bulk-ingest --limit 100 --confirm
 
-# Resume from checkpoint after interruption
+# Reanudar desde checkpoint después de una interrupción
 financial-db sec bulk-ingest --checkpoint-file ./data/checkpoints/sec_bulk/full_universe_checkpoint.json --confirm
 ```
 
-**Bulk ingestion options:**
-| Option | Description |
+**Opciones de ingestión bulk:**
+| Opción | Descripción |
 |--------|-------------|
-| `--limit N` | Process only first N companies |
-| `--checkpoint-file` | Checkpoint file for resumability |
-| `--dry-run` | Validate without writing |
-| `--verbose` | Detailed logging |
-| `--confirm` | Required for full runs |
-| `--api-mode` | Use SEC API for ingestion (default) |
+| `--limit N` | Procesar solo las primeras N empresas |
+| `--checkpoint-file` | Archivo de checkpoint para reanudabilidad |
+| `--dry-run` | Validar sin escribir en la base de datos |
+| `--verbose` | Registro detallado |
+| `--confirm` | Requerido para ejecuciones completas |
+| `--api-mode` | Usar SEC API para ingestion (por defecto) |
 
-**Features:**
-- **Memory efficient**: Streaming JSON parser (ijson) for large responses
-- **Checkpoint/resume**: Atomic checkpoints saved every 30s or every 500 facts
-- **Idempotent**: Re-running produces zero duplicates
-- **Full history**: No date filtering - ingests ALL historical data from first filing
-- **Network resilient**: Infinite retries with 10s intervals, 429/5xx/404 backoff
-- **Graceful shutdown**: SIGINT/SIGTERM handlers save checkpoint and exit cleanly
-- **Crash recovery**: Resume from last checkpoint without duplicates
-- **Batch inserts**: 500 facts per transaction for 50%+ performance improvement
-- **~56 hours** for complete SEC universe (~10,000 companies)
+**Características:**
+- **Efficient en memoria**: Parser JSON streaming (ijson) para respuestas grandes
+- **Checkpoint/resume**: Checkpoints atómicos guardados cada 30s o cada 500 hechos
+- **Idempotent**: Volver a ejecutar produce cero duplicados
+- **Historia completa**: Sin filtrado de fechas - ingesta TODOS los datos históricos desde el primer filing
+- **Resiliente a redes**: Reintentos infinitos con intervalos de 10s, backoff 429/5xx/404
+- **Apagado graceful**: Manejadores SIGINT/SIGTERM que guardan checkpoint y salen limpio
+- **Recuperación de fallos**: Reanudar desde el último checkpoint sin duplicados
+- **Inserts por lotes**: 500 hechos por transacción, mejora de desempeño 50%+
+- **~56 horas** para el universo completo (~10,000 empresas)
 
-**Performance (validated):**
-| Metric | Value (608 companies) | Extrapolated (10,388) |
-|--------|-----------------------|----------------------|
-| Time | ~51 min | ~14.5 hours |
-| Facts inserted | ~12.3M | ~213M |
-| Filings inserted | ~130K | ~2.2M |
-| Database size | ~10 GB | ~170–200 GB |
-| Avg time/company | ~5.0s | ~5.0s (network bound) |
+**Rendimiento (validado):**
+| Métrica | Valor (608 empresas) | Extrapolado (10,388) |
+|---------|----------------------|----------------------|
+| Tiempo | ~51 min | ~14.5 horas |
+| Hechos insertados | ~12.3M | ~213M |
+| Presentaciones insertadas | ~130K | ~2.2M |
+| Tamaño de base de datos | ~10 GB | ~170–200 GB |
+| Tiempo promedio/empresa | ~5.0s | ~5.0s (bounded by network) |
 
-### Stress Test Results (Phase 3.8)
+### Resultados de Estrés (Fase 3.8)
 
-A 608-company stress test was run and validated. Results:
+Se ejecutó una prueba de estrés con 608 empresas y se validó. Resultados:
 
-- Companies processed: 608 (587 inserted, 21 updated)
-- Filings inserted: 129,974
-- Financial facts inserted: 12,343,979
-- Errors: 10 (all expected `404` for non-XBRL filers: closed-end funds, ADRs, royalty trusts)
-- Elapsed: ~51 minutes
-- Integrity audit: zero duplicates/orphans (see `docs/validation_report.md`)
-- Historical coverage: major filers back to 2009 (see `scripts/verify_history.sql`)
+- Empresas procesadas: 608 (587 insertadas, 21 actualizadas)
+- Presentaciones insertadas: 129,974
+- Hechos financieros insertados: 12,343,979
+- Errores: 10 (todos esperados `404` para no-XBRL filers: fondos de inversión, ADRs, trusts de royalties)
+- Tiempo transcurrido: ~51 minutos
+- Auditoría de integridad: cero duplicados/órfanos (ver `docs/validation_report.md`)
+- Cobertura histórica: principales emisores desde 2009 (ver `scripts/verify_history.sql`)
 
-Full universe command:
+Comando para carga full universe:
 
 ```bash
-SEC_USER_AGENT="YourApp/1.0 you@example.com" \
+SEC_USER_AGENT="TuApp/1.0 you@example.com" \
 .venv/bin/python -m financial_database.cli sec bulk-ingest --confirm
 ```
 
-Resume from an interrupted run with the same command (the checkpoint is
-source-aware and resumes automatically). Use `--force` to reset progress.
+Reanudar desde una interrupción con el mismo comando (el checkpoint es source-aware y reanuda automáticamente). Usar `--force` para restablecer el progreso y empezar desde cero.
 
-## Documentation
+## Documentación
 
-- [Architecture Overview](docs/architecture.md)
-- [Database Schema Details](docs/database.md)
-- [Data Sources and Providers](docs/data-sources.md)
+- [Descripción General de la Arquitectura](docs/architecture.md)
+- [Detalles del Esquema de Base de Datos](docs/database.md)
+- [Fuentes de Datos y Proveedores](docs/data-sources.md)
+- [Instrucciones de Carga Completa](docs/runbook_full_load.md)
 
-## Development
+## Desarrollo
 
-### Running Tests
+### Ejecutando Pruebas
 
 ```bash
-# Run all tests
+# Ejecutar todas las pruebas
 python -m pytest tests/
 
-# Run tests with coverage
+# Ejecutar pruebas con cobertura
 python -m pytest tests/ --cov=src
 
-# Run specific test module
+# Ejecutar un módulo de pruebas específico
 python -m pytest tests/unit/test_prices.py
 
-# Run SEC provider tests
+# Ejecutar pruebas del proveedor SEC
 python -m pytest tests/unit/test_sec_*.py
 ```
 
-### Adding Migrations
+### Agregando Migraciones
 
-1. Create a new SQL file in `db/migrations/` with the next sequential number
-2. Add your DDL statements
-3. The migration system will automatically apply new migrations
+1. Crear un nuevo archivo SQL en `db/migrations/` con el númerosequencial siguiente
+2. Agregar sus sentencias DDL
+3. El sistema de migraciones aplicará automáticamente las nuevas migraciones
 
-## Disclaimer
+## Aviso Legal
 
-This project was developed with the assistance of AI tools for debugging, error detection, and code optimization. While AI assistance was used, all code has been reviewed, tested, and verified by human developers to ensure correctness and quality.
+Este proyecto fue desarrollado con la asistencia de herramientas de IA para debugging, detección de errores y optimización de código. Aunque se usó asistencia de IA, todo el código ha sido revisado, probado y verificado por desarrolladores humanos para asegurar corrección y calidad.

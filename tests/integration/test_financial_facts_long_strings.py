@@ -4,6 +4,7 @@
 This test verifies that the financial_facts table can store long strings
 in frame, namespace, and source_id columns after migration 0020.
 """
+
 import uuid
 
 import pytest
@@ -140,7 +141,9 @@ class TestFinancialFactsLongStrings:
         assert result is not None
         assert result["source_id"] == "accession_" + "x" * 500
 
-    def test_all_long_strings_together(self, db_connection, company, provider_id, filing):
+    def test_all_long_strings_together(
+        self, db_connection, company, provider_id, filing
+    ):
         """Test inserting a fact with all three long string fields simultaneously."""
         repo = FinancialFactRepository(db_connection)
 

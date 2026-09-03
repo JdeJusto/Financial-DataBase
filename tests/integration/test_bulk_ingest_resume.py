@@ -419,7 +419,12 @@ class TestBulkIngestIdempotency:
 
         # Verify we would process all companies
         companies_to_process = current_ciks[start_index:]
-        assert companies_to_process == ["0000320193", "0000789019", "0001018724", "0001234567"]
+        assert companies_to_process == [
+            "0000320193",
+            "0000789019",
+            "0001018724",
+            "0001234567",
+        ]
 
     def test_checkpoint_resume_skips_processed(self):
         """Test that resume logic correctly skips already processed CIKs."""

@@ -10,7 +10,7 @@ __pycache__/
 .coverage
 .hypothesis/
 site-build/
-/.hypothesis/
+/hypothesis/
 
 # UV
 .venv/
@@ -24,8 +24,13 @@ images/
 .env*
 **.env*
 
-# Data
+# Data (datos generados durante ejecución, no versionar)
 data/raw/
+data/checkpoints/
+data/missing_ciks.txt
+data/missing_companies.json
+
+# Datos de prueba/estrés
 stress_test.log
 
 # GitHub
@@ -42,4 +47,7 @@ pyrightconfig.json
 
 # Mac
 .DS_Store
-data/checkpoints/
+
+# Regresiones / temporales
+.test-results/
+coverage/

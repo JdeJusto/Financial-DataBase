@@ -9,7 +9,10 @@ import logging
 import os
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import click
 import psycopg
@@ -21,6 +24,8 @@ from financial_database.providers.sec.bulk_ingest import (
     SECBulkIngestAbort,
     create_bulk_ingester,
 )
+from financial_database.providers.sec.importer import create_sec_importer
+from financial_database.providers.sec.models import normalize_cik
 
 
 @click.group()
@@ -537,9 +542,7 @@ def sec_bulk_ingest(
         logging.basicConfig(level=logging.INFO)
 
     if limit is not None and limit <= 0:
-        raise click.ClickException(
-            "--limit must be a positive integer greater than 0"
-        )
+        raise click.ClickException("--limit must be a positive integer greater than 0")
 
     if limit is None and not confirm and not dry_run:
         raise click.ClickException(
@@ -647,7 +650,7 @@ def sec_bulk_ingest(
 
     except (OSError, psycopg.Error, RuntimeError, ValueError) as e:
         ingester.mark_import_run_failed(str(e))
-        print(f"❌ Bulk ingestion failed: {e}", file=sys.stderr)
+        print(f"�⚠ Bulk ingestion failed: {e}", file=sys.stderr)
         logging.getLogger(__name__).exception("Bulk ingestion failed")
         sys.exit(1)
     except SECBulkIngestAbort as e:
@@ -660,6 +663,353 @@ def sec_bulk_ingest(
         sys.exit(130)
     finally:
         asyncio.run(client.close())
+
+
+@sec.command("update-incremental")
+@click.option("--database-url", default=None, help="PostgreSQL connection URL")
+@click.option(
+    "--max-age-hours",
+    type=int,
+    default=24,
+    help="Maximum age of data before considering it stale (default: 24 hours)",
+)
+@click.option(
+    "--batch-size",
+    type=int,
+    default=100,
+    help="Number of companies to process in each batch (default: 100)",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Limit number of companies to process (for testing)",
+)
+@click.option("--dry-run", is_flag=True, help="Validate without writing to database")
+@click.option("--verbose", is_flag=True, help="Increase logging detail")
+def sec_update_incremental(
+    database_url: str | None,
+    max_age_hours: int,
+    batch_size: int,
+    limit: int | None,
+    dry_run: bool,
+    verbose: bool,
+):
+    """Incrementally update the database with latest SEC data.
+
+    This command:
+    1. Downloads the latest company_tickers.json
+    2. Identifies companies that have new or changed data
+    3. For each changed company, fetches latest submissions and companyfacts
+    4. Upserts the data using existing idempotent repositories
+    5. Records an import_run with status success/partial/failed
+
+    Safe to run multiple times per day.
+    """
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+    if dry_run:
+        print("🔍 Dry run - validating incremental update setup...")
+        print(f"   Max age: {max_age_hours} hours")
+        print(f"   Batch size: {batch_size}")
+        if limit is not None and limit > 0:
+            print(f"   Limit: {limit} (will be applied to processing)")
+
+        from financial_database.providers.sec import SECClient
+
+        user_agent = _get_user_agent()
+        raw_dir = _get_raw_dir()
+        client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
+        try:
+            companies = asyncio.run(client.get_company_tickers())
+            if limit is not None and limit > 0:
+                companies = companies[:limit]
+            print(
+                f"   Companies in SEC universe: {len(companies)}{' (limited)' if limit is not None and limit > 0 else ''}"
+            )
+            # Check how many would be considered stale
+            conn = _get_db_connection(database_url)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT COUNT(*)
+                        FROM companies c
+                        JOIN company_identifiers ci ON c.id = ci.company_id
+                        WHERE ci.identifier_type = 'CIK'
+                          AND ci.provider_id = (SELECT id FROM data_providers WHERE name = 'SEC EDGAR')
+                          AND (c.last_synced_at IS NULL OR c.last_synced_at < NOW() - (%s * interval '1 hour'))
+                        """,
+                        (max_age_hours,),
+                    )
+                    result = cur.fetchone()
+                    stale_count = result["count"] if result else 0
+                    print(f"   Stale companies (>{max_age_hours}h): {stale_count}")
+                    if limit is not None and limit > 0:
+                        print(
+                            f"   Note: --limit {limit} will be applied to the list of stale companies for processing."
+                        )
+            finally:
+                conn.close()
+        finally:
+            asyncio.run(client.close())
+        return
+
+    async def _run_update_incremental():
+        # Get database connection
+        effective_database_url = database_url or os.environ.get(
+            "DATABASE_URL",
+            "postgresql://financial:test@localhost:5432/financial_database",
+        )
+
+        user_agent = _get_user_agent()
+        raw_dir = _get_raw_dir()
+
+        start_time = time.time()
+
+        # Create importer
+        print("🔧 Initializing incremental updater...")
+        importer, client = create_sec_importer(
+            database_url=effective_database_url,
+            user_agent=user_agent,
+            raw_dir=raw_dir,
+        )
+
+        try:
+            # Record the import run for audit/provenance
+            provider_id = importer._get_provider_id()
+            run = importer.import_runs.create(
+                str(provider_id), "sec_update_incremental", "running"
+            )
+            run_id = str(run["id"])
+            run_start_time = time.time()
+
+            print("📥 Fetching latest company universe from SEC...")
+            sec_companies = await client.get_company_tickers()
+            sec_company_dict = {normalize_cik(c.cik): c for c in sec_companies}
+            print(f"   Found {len(sec_companies)} companies in SEC universe")
+
+            # Get companies from database that need updating
+            print("🔍 Identifying stale companies...")
+            conn = importer.conn  # Reuse the connection from importer
+            stale_ciks = []
+
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT ci.identifier_value
+                    FROM companies c
+                    JOIN company_identifiers ci ON c.id = ci.company_id
+                    WHERE ci.identifier_type = 'CIK'
+                      AND ci.provider_id = (SELECT id FROM data_providers WHERE name = 'SEC EDGAR')
+                      AND (c.last_synced_at IS NULL OR c.last_synced_at < NOW() - (%s * interval '1 hour'))
+                    """,
+                    (max_age_hours,),
+                )
+                result = cur.fetchall()
+                stale_ciks = (
+                    [row["identifier_value"] for row in result] if result else []
+                )
+
+            print(
+                f"   Found {len(stale_ciks)} companies needing update (>{max_age_hours}h stale)"
+            )
+
+            if not stale_ciks:
+                print("✅ No companies need updating - all data is fresh!")
+                # Still mark the import run as successful
+                importer.import_runs.update(
+                    run_id,
+                    status="success",
+                    records_processed=0,
+                    records_inserted=0,
+                    records_updated=0,
+                    records_skipped=0,
+                    finished_at=datetime.now(UTC),
+                    duration_seconds=int(time.time() - run_start_time),
+                )
+                return
+
+            # Process in batches
+            total_stats = ImportStats()
+            processed_count = 0
+
+            for i in range(0, len(stale_ciks), batch_size):
+                batch = stale_ciks[i : i + batch_size]
+                batch_num = (i // batch_size) + 1
+                total_batches = (len(stale_ciks) + batch_size - 1) // batch_size
+
+                print(
+                    f"📦 Processing batch {batch_num}/{total_batches} ({len(batch)} companies)..."
+                )
+
+                batch_stats = ImportStats()
+
+                for cik in batch:
+                    # Get the SEC company data
+                    sec_company = sec_company_dict.get(cik)
+                    if not sec_company:
+                        logger.warning(f"CIK {cik} not found in SEC universe, skipping")
+                        batch_stats.errors.append(
+                            {"cik": cik, "error": "CIK not found in SEC universe"}
+                        )
+                        continue
+
+                    try:
+                        # Sync this company (universe + submissions + companyfacts)
+                        company_stats = await importer.sync_company(
+                            cik,
+                            include_facts=True,
+                            include_filings=True,
+                            stats=ImportStats(),
+                        )
+
+                        # Update the last_synced timestamp
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                UPDATE companies
+                                SET last_synced_at = NOW()
+                                WHERE id = (
+                                    SELECT c.id
+                                    FROM companies c
+                                    JOIN company_identifiers ci ON c.id = ci.company_id
+                                    WHERE ci.identifier_type = 'CIK'
+                                      AND ci.identifier_value = %s
+                                      AND ci.provider_id = (SELECT id FROM data_providers WHERE name = 'SEC EDGAR')
+                                )
+                                """,
+                                (cik,),
+                            )
+
+                        # Accumulate stats
+                        batch_stats.companies_processed += (
+                            company_stats.companies_processed
+                        )
+                        batch_stats.companies_inserted += (
+                            company_stats.companies_inserted
+                        )
+                        batch_stats.companies_updated += company_stats.companies_updated
+                        batch_stats.identifiers_inserted += (
+                            company_stats.identifiers_inserted
+                        )
+                        batch_stats.listings_inserted += company_stats.listings_inserted
+                        batch_stats.filings_processed += company_stats.filings_processed
+                        batch_stats.filings_inserted += company_stats.filings_inserted
+                        batch_stats.filings_skipped += company_stats.filings_skipped
+                        batch_stats.facts_processed += company_stats.facts_processed
+                        batch_stats.facts_inserted += company_stats.facts_inserted
+                        batch_stats.facts_skipped += company_stats.facts_skipped
+                        batch_stats.facts_validation_errors += (
+                            company_stats.facts_validation_errors
+                        )
+                        batch_stats.errors.extend(company_stats.errors)
+
+                        processed_count += 1
+
+                    except Exception as e:  # noqa: BLE001 - catch all to continue with other companies
+                        logger.error(f"Failed to process company {cik}: {e}")
+                        batch_stats.errors.append(
+                            {"cik": cik, "error": str(e), "type": type(e).__name__}
+                        )
+
+                # Commit after each batch
+                conn.commit()
+
+                # Accumulate batch stats to total
+                total_stats.companies_processed += batch_stats.companies_processed
+                total_stats.companies_inserted += batch_stats.companies_inserted
+                total_stats.companies_updated += batch_stats.companies_updated
+                total_stats.identifiers_inserted += batch_stats.identifiers_inserted
+                total_stats.listings_inserted += batch_stats.listings_inserted
+                total_stats.filings_processed += batch_stats.filings_processed
+                total_stats.filings_inserted += batch_stats.filings_inserted
+                total_stats.filings_skipped += batch_stats.filings_skipped
+                total_stats.facts_processed += batch_stats.facts_processed
+                total_stats.facts_inserted += batch_stats.facts_inserted
+                total_stats.facts_skipped += batch_stats.facts_skipped
+                total_stats.facts_validation_errors += (
+                    batch_stats.facts_validation_errors
+                )
+                total_stats.errors.extend(batch_stats.errors)
+
+                print(
+                    f"   ✅ Batch {batch_num} complete: {batch_stats.companies_processed} companies processed"
+                )
+
+            # Finalize import run
+            duration = int(time.time() - run_start_time)
+            error_dict = None
+            if total_stats.errors:
+                error_dict = {
+                    "error_count": len(total_stats.errors),
+                    "sample_errors": total_stats.errors[:5],
+                }
+
+            importer.import_runs.update(
+                run_id,
+                status="success" if len(total_stats.errors) == 0 else "partial",
+                records_processed=total_stats.companies_processed
+                + total_stats.filings_processed
+                + total_stats.facts_processed,
+                records_inserted=total_stats.companies_inserted
+                + total_stats.filings_inserted
+                + total_stats.facts_inserted,
+                records_updated=total_stats.companies_updated
+                + total_stats.listings_inserted,
+                records_skipped=total_stats.filings_skipped + total_stats.facts_skipped,
+                errors=error_dict,
+                finished_at=datetime.now(UTC),
+                duration_seconds=duration,
+            )
+
+            elapsed = time.time() - start_time
+            print("\n✅ Incremental update complete:")
+            print(f"   Companies processed: {total_stats.companies_processed}")
+            print(f"   Companies inserted: {total_stats.companies_inserted}")
+            print(f"   Companies updated: {total_stats.companies_updated}")
+            print(f"   Identifiers inserted: {total_stats.identifiers_inserted}")
+            print(f"   Filings processed: {total_stats.filings_processed}")
+            print(f"   Filings inserted: {total_stats.filings_inserted}")
+            print(f"   Filings skipped: {total_stats.filings_skipped}")
+            print(f"   Facts processed: {total_stats.facts_processed}")
+            print(f"   Facts inserted: {total_stats.facts_inserted}")
+            print(f"   Facts skipped: {total_stats.facts_skipped}")
+            print(f"   Facts validation errors: {total_stats.facts_validation_errors}")
+            print(f"   Errors encountered: {len(total_stats.errors)}")
+            print(f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)")
+
+            if total_stats.errors:
+                print("\n⚠️  Errors (first 5):")
+                for err in total_stats.errors[:5]:
+                    print(f"   - {err}")
+
+        except Exception as e:
+            # Mark the import run as failed
+            if "run_id" in locals():
+                importer.import_runs.update(
+                    run_id,
+                    status="failed",
+                    records_processed=0,
+                    records_inserted=0,
+                    records_updated=0,
+                    records_skipped=0,
+                    errors={"error": str(e), "type": type(e).__name__},
+                    finished_at=datetime.now(UTC),
+                    duration_seconds=int(time.time() - run_start_time),
+                )
+
+            print(f"❌ Incremental update failed: {e}", file=sys.stderr)
+            logging.getLogger(__name__).exception("Incremental update failed")
+            sys.exit(1)
+        finally:
+            await client.close()
+
+    # Run the async function
+    asyncio.run(_run_update_incremental())
 
 
 # Import Stats class for type hints

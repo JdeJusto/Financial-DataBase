@@ -49,10 +49,14 @@ def _make_ingester(tmp_path):
 def _configure_client(client, companies):
     client.get_company_tickers = AsyncMock(return_value=companies)
     client.get_company_facts = AsyncMock(
-        return_value=SECCompanyFacts(cik="0000320193", entity_name="Apple Inc.", facts={})
+        return_value=SECCompanyFacts(
+            cik="0000320193", entity_name="Apple Inc.", facts={}
+        )
     )
     client.get_submissions = AsyncMock(
-        return_value=SECSubmissions(cik="0000320193", entity_name="Apple Inc.", filings=[])
+        return_value=SECSubmissions(
+            cik="0000320193", entity_name="Apple Inc.", filings=[]
+        )
     )
 
 
@@ -83,9 +87,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_ticker_item", new_callable=AsyncMock
             ) as mock_ticker,
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
@@ -106,9 +108,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_ticker_item", new_callable=AsyncMock
             ) as first_ticker,
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
@@ -124,9 +124,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_ticker_item", new_callable=AsyncMock
             ) as second_ticker,
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
@@ -160,9 +158,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_ticker_item", new_callable=AsyncMock
             ) as mock_ticker,
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
@@ -198,9 +194,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_ticker_item", new_callable=AsyncMock
             ) as mock_ticker,
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
@@ -236,9 +230,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_ticker_item", new_callable=AsyncMock
             ) as mock_ticker,
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
@@ -301,7 +293,9 @@ class TestIngestFullUniverse:
         with (
             patch.object(ingester, "_get_provider_id", return_value=_PROVIDER_ID),
             patch.object(ingester, "_process_ticker_item", new_callable=AsyncMock),
-            patch.object(ingester, "_get_company_id_by_cik", return_value="company-uuid-1"),
+            patch.object(
+                ingester, "_get_company_id_by_cik", return_value="company-uuid-1"
+            ),
             patch.object(ingester, "_build_filing_id_map", return_value=filing_map),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
@@ -358,9 +352,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(ingester, "_record_raw_document") as mock_record,
         ):
             await ingester.ingest_full_universe()
@@ -390,9 +382,7 @@ class TestIngestFullUniverse:
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             pytest.raises(SECBulkIngestAbort, match="Transient SEC error"),
         ):
             await ingester.ingest_full_universe()
@@ -481,13 +471,9 @@ class TestIngestFullUniverse:
         ingester.facts.create_batch = MagicMock(return_value=[])
 
         events = []
-        ingester.conn.commit = MagicMock(
-            side_effect=lambda: events.append("commit")
-        )
+        ingester.conn.commit = MagicMock(side_effect=lambda: events.append("commit"))
         ingester.conn.transaction = MagicMock(
-            side_effect=lambda: (
-                events.append("transaction") or contextlib.nullcontext()
-            )
+            side_effect=lambda: events.append("transaction") or contextlib.nullcontext()
         )
 
         await ingester._process_company_facts(

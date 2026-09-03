@@ -15,7 +15,9 @@ class ImportRunRepository:
     def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
-    def create(self, provider_id: str, pipeline: str, status: str = "running") -> dict[str, Any]:
+    def create(
+        self, provider_id: str, pipeline: str, status: str = "running"
+    ) -> dict[str, Any]:
         """Create a new import run record."""
         with self.conn.cursor() as cur:
             cur.execute(
@@ -26,7 +28,8 @@ class ImportRunRepository:
                    duration_seconds""",
                 (provider_id, pipeline, status),
             )
-            rows = cur.fetchall(); return rows[0] if rows else None
+            rows = cur.fetchall()
+            return rows[0] if rows else None
 
     def update(
         self,

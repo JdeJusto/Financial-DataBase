@@ -41,11 +41,16 @@ def _configure_client(client, companies):
     client.get_company_tickers = AsyncMock(return_value=companies)
     # Import inside function to avoid circular imports
     from financial_database.providers.sec.models import SECCompanyFacts, SECSubmissions
+
     client.get_company_facts = AsyncMock(
-        return_value=SECCompanyFacts(cik="0000320193", entity_name="Apple Inc.", facts={})
+        return_value=SECCompanyFacts(
+            cik="0000320193", entity_name="Apple Inc.", facts={}
+        )
     )
     client.get_submissions = AsyncMock(
-        return_value=SECSubmissions(cik="0000320193", entity_name="Apple Inc.", filings=[])
+        return_value=SECSubmissions(
+            cik="0000320193", entity_name="Apple Inc.", filings=[]
+        )
     )
 
 
@@ -93,9 +98,7 @@ async def test_stale_checkpoint_higher_than_all_ciks_processes_all():
             patch.object(
                 ingester, "_process_ticker_item", new_callable=AsyncMock
             ) as mock_ticker,
-            patch.object(
-                ingester, "_process_company_facts", new_callable=AsyncMock
-            ),
+            patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
             patch.object(
                 ingester, "_process_submissions_from_api", new_callable=AsyncMock
             ),
@@ -106,14 +109,22 @@ async def test_stale_checkpoint_higher_than_all_ciks_processes_all():
             # Verify all companies were processed
             print(f"Companies processed: {stats.companies_processed}")
             print("Expected: 5")
-            assert stats.companies_processed == 5, f"Expected 5 companies processed, got {stats.companies_processed}"
-            assert mock_ticker.call_count == 5, f"Expected 5 ticker calls, got {mock_ticker.call_count}"
+            assert stats.companies_processed == 5, (
+                f"Expected 5 companies processed, got {stats.companies_processed}"
+            )
+            assert mock_ticker.call_count == 5, (
+                f"Expected 5 ticker calls, got {mock_ticker.call_count}"
+            )
 
             # Verify the checkpoint was updated correctly
             saved_checkpoint = ingester._load_checkpoint("full_universe")
             assert saved_checkpoint is not None, "Checkpoint should not be None"
-            assert saved_checkpoint.last_processed_cik == "0001652044", f"Expected last_processed_cik to be '0001652044', got '{saved_checkpoint.last_processed_cik}'"
-            assert saved_checkpoint.companies_processed == 5, f"Expected companies_processed to be 5, got {saved_checkpoint.companies_processed}"
+            assert saved_checkpoint.last_processed_cik == "0001652044", (
+                f"Expected last_processed_cik to be '0001652044', got '{saved_checkpoint.last_processed_cik}'"
+            )
+            assert saved_checkpoint.companies_processed == 5, (
+                f"Expected companies_processed to be 5, got {saved_checkpoint.companies_processed}"
+            )
 
             print("✅ Test passed!")
 

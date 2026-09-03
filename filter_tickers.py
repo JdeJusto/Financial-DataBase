@@ -20,7 +20,9 @@ raw_dir = Path(os.environ.get("DATA_RAW_DIR", "./data/raw")) / "sec" / "referenc
 tickers_file = raw_dir / "company_tickers_exchange.json"
 
 if not tickers_file.exists():
-    print(f"Error: {tickers_file} not found. Please run a dry-run first to download the raw data.")
+    print(
+        f"Error: {tickers_file} not found. Please run a dry-run first to download the raw data."
+    )
     sys.exit(1)
 
 print(f"Reading {tickers_file}")

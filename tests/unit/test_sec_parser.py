@@ -594,7 +594,7 @@ class TestValidateFinancialFact:
             provider_id="provider-uuid",
         )
         errors = validate_financial_fact(fact)
-        assert "fiscal_year must be valid" in errors
+        assert "fiscal_year 1800 is outside valid range (1990-2030)" in errors
 
     def test_period_start_after_period_end(self):
         fact = ParsedFinancialFact(

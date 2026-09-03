@@ -13,7 +13,11 @@ from financial_database.providers.sec.bulk_ingest import (
     BulkImportCheckpoint,
     SECBulkIngester,
 )
-from financial_database.providers.sec.models import SECCompany
+from financial_database.providers.sec.models import (
+    SECCompany,
+    SECCompanyFacts,
+    SECSubmissions,
+)
 
 
 def _make_company(cik: str, name: str, ticker: str) -> SECCompany:
@@ -39,10 +43,14 @@ def _make_ingester(tmp_path):
 def _configure_client(client, companies):
     client.get_company_tickers = AsyncMock(return_value=companies)
     client.get_company_facts = AsyncMock(
-        return_value=SECCompanyFacts(cik="0000320193", entity_name="Apple Inc.", facts={})
+        return_value=SECCompanyFacts(
+            cik="0000320193", entity_name="Apple Inc.", facts={}
+        )
     )
     client.get_submissions = AsyncMock(
-        return_value=SECSubmissions(cik="0000320193", entity_name="Apple Inc.", filings=[])
+        return_value=SECSubmissions(
+            cik="0000320193", entity_name="Apple Inc.", filings=[]
+        )
     )
 
 
@@ -50,9 +58,9 @@ def _five_companies():
     return [
         _make_company("0000320193", "Apple Inc.", "AAPL"),
         _make_company("0000789019", "Microsoft Corp", "MSFT"),
-        _make_company("0001018724", "Amazon Com Inc", "AMZN"),
-        _make_company("0001318605", "Tesla Inc", "TSLA"),
-        _make_company("0001652044", "Alphabet Inc", "GOOGL"),
+        _make_company("00001018724", "Amazon Com Inc", "AMZN"),
+        _make_company("00001318605", "Tesla Inc", "TSLA"),
+        _make_company("00001652044", "Alphabet Inc", "GOOGL"),
     ]
 
 
@@ -90,12 +98,8 @@ async def test_stale_checkpoint_higher_than_all_ciks_processes_all(tmp_path):
         patch.object(
             ingester, "_process_ticker_item", new_callable=AsyncMock
         ) as mock_ticker,
-        patch.object(
-            ingester, "_process_company_facts", new_callable=AsyncMock
-        ),
-        patch.object(
-            ingester, "_process_submissions_from_api", new_callable=AsyncMock
-        ),
+        patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
+        patch.object(ingester, "_process_submissions_from_api", new_callable=AsyncMock),
     ):
         # This should process ALL companies, not skip all
         stats = await ingester.ingest_full_universe()
@@ -107,7 +111,9 @@ async def test_stale_checkpoint_higher_than_all_ciks_processes_all(tmp_path):
         # Verify the checkpoint was updated correctly
         saved_checkpoint = ingester._load_checkpoint("full_universe")
         assert saved_checkpoint is not None
-        assert saved_checkpoint.last_processed_cik == "0001652044"  # Last CIK processed
+        assert (
+            saved_checkpoint.last_processed_cik == "00001652044"
+        )  # Last CIK processed
         assert saved_checkpoint.companies_processed == 5
 
 

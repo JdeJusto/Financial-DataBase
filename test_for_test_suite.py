@@ -41,10 +41,14 @@ def _make_ingester(tmp_path):
 def _configure_client(client, companies):
     client.get_company_tickers = AsyncMock(return_value=companies)
     client.get_company_facts = AsyncMock(
-        return_value=SECCompanyFacts(cik="0000320193", entity_name="Apple Inc.", facts={})
+        return_value=SECCompanyFacts(
+            cik="0000320193", entity_name="Apple Inc.", facts={}
+        )
     )
     client.get_submissions = AsyncMock(
-        return_value=SECSubmissions(cik="0000320193", entity_name="Apple Inc.", filings=[])
+        return_value=SECSubmissions(
+            cik="0000320193", entity_name="Apple Inc.", filings=[]
+        )
     )
 
 
@@ -95,12 +99,8 @@ async def test_stale_checkpoint_higher_than_all_ciks_processes_all(tmp_path):
         patch.object(
             ingester, "_process_ticker_item", new_callable=AsyncMock
         ) as mock_ticker,
-        patch.object(
-            ingester, "_process_company_facts", new_callable=AsyncMock
-        ),
-        patch.object(
-            ingester, "_process_submissions_from_api", new_callable=AsyncMock
-        ),
+        patch.object(ingester, "_process_company_facts", new_callable=AsyncMock),
+        patch.object(ingester, "_process_submissions_from_api", new_callable=AsyncMock),
     ):
         # This should process ALL companies, not skip all
         stats = await ingester.ingest_full_universe()

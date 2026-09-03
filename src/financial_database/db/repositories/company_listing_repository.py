@@ -41,7 +41,8 @@ class CompanyListingRepository:
                     is_primary,
                 ),
             )
-            rows = cur.fetchall(); return rows[0] if rows else None
+            rows = cur.fetchall()
+            return rows[0] if rows else None
 
     def get_by_company_id(self, company_id: str) -> list[dict]:
         """Get all listings for a company."""

@@ -230,7 +230,10 @@ class SECBulkIngester:
         return self._import_run_id
 
     def _finish_import_run(
-        self, status: str, stats: BulkImportStats | None = None, error: str | None = None
+        self,
+        status: str,
+        stats: BulkImportStats | None = None,
+        error: str | None = None,
     ) -> None:
         """Mark the current import run as success/failed with counts."""
         if self._import_run_id is None:
@@ -587,7 +590,9 @@ class SECBulkIngester:
                         "Checkpoint last_processed_cik is higher than all CIKs in current universe, starting from beginning",
                         extra={
                             "checkpoint_cik": checkpoint.last_processed_cik,
-                            "max_cik_in_universe": companies_to_process[-1][0] if companies_to_process else None,
+                            "max_cik_in_universe": companies_to_process[-1][0]
+                            if companies_to_process
+                            else None,
                         },
                     )
 
@@ -1287,6 +1292,20 @@ class SECBulkIngester:
             facts_batch = []
             for fact in chunk:
                 stats.facts_processed += 1
+                # Validate fact before adding to batch
+                errors = validate_financial_fact(fact)
+                if errors:
+                    stats.facts_validation_errors += 1
+                    logger.debug(
+                        "Skipping fact due to validation errors",
+                        extra={
+                            "cik": cik,
+                            "concept": fact.concept,
+                            "errors": errors,
+                        },
+                    )
+                    continue
+
                 fact_dict = {
                     "company_id": company_id,
                     "concept": fact.concept,
@@ -1316,8 +1335,12 @@ class SECBulkIngester:
 
             # Periodic checkpointing based on time interval OR fact count
             current_time = time.monotonic()
-            time_checkpoint = current_time - checkpoint_timer >= CHECKPOINT_INTERVAL_SECONDS
-            count_checkpoint = facts_processed % 500 == 0  # Every 500 facts as per README
+            time_checkpoint = (
+                current_time - checkpoint_timer >= CHECKPOINT_INTERVAL_SECONDS
+            )
+            count_checkpoint = (
+                facts_processed % 500 == 0
+            )  # Every 500 facts as per README
 
             if time_checkpoint or count_checkpoint:
                 logger.debug(
@@ -1326,9 +1349,11 @@ class SECBulkIngester:
                         "cik": cik,
                         "facts_processed": facts_processed,
                         "facts_total": facts_total,
-                        "trigger": "time" if time_checkpoint and not count_checkpoint
-                                else "count" if count_checkpoint and not time_checkpoint
-                                else "both",
+                        "trigger": "time"
+                        if time_checkpoint and not count_checkpoint
+                        else "count"
+                        if count_checkpoint and not time_checkpoint
+                        else "both",
                     },
                 )
                 # The transaction above commits automatically on exit
@@ -1554,7 +1579,10 @@ class SECBulkIngester:
                 # For full_universe, we validate against the local company_tickers.json file
                 if tickers_path.exists():
                     current_checksum = self._compute_file_checksum(tickers_path)
-                    if loaded.source_file_checksum and loaded.source_file_checksum != current_checksum:
+                    if (
+                        loaded.source_file_checksum
+                        and loaded.source_file_checksum != current_checksum
+                    ):
                         logger.warning(
                             "Checkpoint source file checksum mismatch, starting fresh",
                             extra={
@@ -1663,7 +1691,9 @@ class SECBulkIngester:
                         "Checkpoint last_processed_cik is higher than all CIKs in current universe, starting from beginning",
                         extra={
                             "checkpoint_cik": checkpoint.last_processed_cik,
-                            "max_cik_in_universe": companies[-1].normalized_cik if companies else None,
+                            "max_cik_in_universe": companies[-1].normalized_cik
+                            if companies
+                            else None,
                         },
                     )
 
@@ -1676,7 +1706,6 @@ class SECBulkIngester:
             if checkpoint.last_processed_cik and cik <= checkpoint.last_processed_cik:
                 logger.debug("Skipping already processed CIK", extra={"cik": cik})
                 continue
-
 
             try:
                 logger.info(
@@ -1727,9 +1756,7 @@ class SECBulkIngester:
                             company_id, provider_id
                         )
                 except SECNotFoundError as e:
-                    logger.info(
-                        "No submissions (404) for CIK", extra={"cik": cik}
-                    )
+                    logger.info("No submissions (404) for CIK", extra={"cik": cik})
                     stats.errors.append(
                         {
                             "cik": cik,
@@ -1753,9 +1780,7 @@ class SECBulkIngester:
                     )
                     # Abort without advancing the checkpoint so the company is
                     # retried on resume rather than silently skipped.
-                    raise SECBulkIngestAbort(
-                        f"Transient SEC error for CIK {cik}: {e}"
-                    )
+                    raise SECBulkIngestAbort(f"Transient SEC error for CIK {cik}: {e}")
                 except (
                     aiohttp.ClientError,
                     ValueError,
@@ -1853,9 +1878,7 @@ class SECBulkIngester:
                     )
                     # Abort without advancing the checkpoint so the company is
                     # retried on resume rather than silently skipped.
-                    raise SECBulkIngestAbort(
-                        f"Transient SEC error for CIK {cik}: {e}"
-                    )
+                    raise SECBulkIngestAbort(f"Transient SEC error for CIK {cik}: {e}")
                 except (
                     aiohttp.ClientError,
                     ValueError,

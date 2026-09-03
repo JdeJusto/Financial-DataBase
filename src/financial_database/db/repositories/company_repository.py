@@ -74,7 +74,8 @@ class CompanyRepository:
                 f"UPDATE companies SET {', '.join(set_parts)} WHERE id = %s RETURNING id, legal_name, country, sector, industry, currency, website, created_at, updated_at",
                 params,
             )
-            return cur.fetchall()[0] if cur.fetchall() else None
+            rows = cur.fetchall()
+            return rows[0] if rows else None
 
     def get_by_id(self, company_id: str) -> dict | None:
         """Get company by internal ID."""

@@ -756,10 +756,12 @@ def create_sec_importer(
     """Factory function to create SEC importer with dependencies."""
     import os
 
+    from psycopg.rows import dict_row
+
     url = database_url or os.environ.get(
         "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
     )
-    conn = psycopg.connect(url)
+    conn = psycopg.connect(url, row_factory=dict_row)
     client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
     importer = SECImporter(conn, client)
     return importer, client

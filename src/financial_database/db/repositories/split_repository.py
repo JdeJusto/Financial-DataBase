@@ -37,7 +37,8 @@ class SplitRepository:
                     source_id,
                 ),
             )
-            rows = cur.fetchall(); return rows[0] if rows else None
+            rows = cur.fetchall()
+            return rows[0] if rows else None
 
     def get_by_listing_id(self, listing_id: str) -> list[dict]:
         """Get all splits for a listing."""

@@ -31,7 +31,9 @@ SEC_BASE_URL = "https://www.sec.gov"
 SEC_DATA_BASE_URL = "https://data.sec.gov"
 SEC_SUBMISSIONS_URL = f"{SEC_DATA_BASE_URL}/api/xbrl/companyfacts/"
 # Allow overriding the company tickers URL for testing (e.g., to use a filtered list)
-SEC_COMPANY_TICKERS_URL = os.environ.get("SEC_CUSTOM_TICKERS_URL", f"{SEC_BASE_URL}/files/company_tickers_exchange.json")
+SEC_COMPANY_TICKERS_URL = os.environ.get(
+    "SEC_CUSTOM_TICKERS_URL", f"{SEC_BASE_URL}/files/company_tickers_exchange.json"
+)
 SEC_SUBMISSIONS_PATH = "/submissions/CIK{}.json"
 SEC_COMPANYFACTS_PATH = "/api/xbrl/companyfacts/CIK{}.json"
 
@@ -426,13 +428,19 @@ class SECClient:
         """Fetch SEC company tickers exchange reference data."""
         logger.info("Fetching SEC company tickers")
 
-        # Check if the URL is a local file
-        if SEC_COMPANY_TICKERS_URL.startswith(('/', 'file://')):
+        # Check if the URL is a local file (absolute or relative path)
+        # Remote URLs contain "://" (http://, https://, etc.)
+        # Local files don't contain "://" (including file:// which we handle specially)
+        if "://" not in SEC_COMPANY_TICKERS_URL or SEC_COMPANY_TICKERS_URL.startswith(
+            "file://"
+        ):
             # Local file path
             file_path = SEC_COMPANY_TICKERS_URL
-            file_path = file_path.removeprefix('file://')  # Remove 'file://' prefix
+            file_path = file_path.removeprefix(
+                "file://"
+            )  # Remove 'file://' prefix if present
             try:
-                async with aiofiles.open(file_path, 'r') as f:
+                async with aiofiles.open(file_path, "r") as f:
                     content = await f.read()
                 data = json.loads(content)
                 logger.info(
@@ -455,29 +463,64 @@ class SECClient:
             )
 
         companies = []
-        for item in data.get("data", []):
-            # data format: [cik, name, ticker, exchange, sic, sic_description, owner_org]
-            # Skip None items or items with insufficient data
-            if item is None or len(item) < 3:
-                continue
 
-            # Validate that CIK is numeric (contains only digits)
-            cik_str = str(item[0])
-            if not cik_str.isdigit():
-                continue
+        # Detect format: official SEC dictionary format or custom list format
+        if "data" in data and isinstance(data["data"], list):
+            # Custom list format: {"fields": [...], "data": [[cik, name, ticker, exchange], ...]}
+            for item in data.get("data", []):
+                # data format: [cik, name, ticker, exchange, sic, sic_description, owner_org]
+                # Skip None items or items with insufficient data
+                if item is None or len(item) < 3:
+                    continue
 
-            cik = cik_str.zfill(10)
-            companies.append(
-                SECCompany(
-                    cik=cik,
-                    name=item[1],
-                    ticker=item[2] if item[2] else None,
-                    exchange=item[3] if len(item) > 3 and item[3] else None,
-                    sic=item[4] if len(item) > 4 and item[4] else None,
-                    sic_description=item[5] if len(item) > 5 and item[5] else None,
-                    owner_org=item[6] if len(item) > 6 and item[6] else None,
+                # Validate that CIK is numeric (contains only digits)
+                cik_str = str(item[0])
+                if not cik_str.isdigit():
+                    continue
+
+                cik = cik_str.zfill(10)
+                companies.append(
+                    SECCompany(
+                        cik=cik,
+                        name=item[1],
+                        ticker=item[2] if item[2] else None,
+                        exchange=item[3] if len(item) > 3 and item[3] else None,
+                        sic=item[4] if len(item) > 4 and item[4] else None,
+                        sic_description=item[5] if len(item) > 5 and item[5] else None,
+                        owner_org=item[6] if len(item) > 6 and item[6] else None,
+                    )
                 )
-            )
+        else:
+            # Official SEC dictionary format: {"0": {"cik_str": ..., "ticker": ..., "title": ...}, ...}
+            for key, item in data.items():
+                # Skip non-numeric keys (like metadata)
+                if not key.isdigit():
+                    continue
+
+                # Validate required fields
+                if not isinstance(item, dict):
+                    continue
+
+                cik_str = item.get("cik_str")
+                ticker = item.get("ticker")
+                title = item.get("title")
+
+                if cik_str is None or ticker is None or title is None:
+                    continue
+
+                # Validate that CIK is numeric (contains only digits)
+                if not str(cik_str).isdigit():
+                    continue
+
+                cik = str(cik_str).zfill(10)
+                companies.append(
+                    SECCompany(
+                        cik=cik,
+                        name=title,
+                        ticker=ticker,
+                        exchange="",  # Unknown in official format, can be inferred later
+                    )
+                )
 
         logger.info("Fetched SEC companies", extra={"count": len(companies)})
         return companies

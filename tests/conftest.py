@@ -68,10 +68,12 @@ def async_db_engine(test_db_url):
 @pytest.fixture
 def async_db_session(async_db_engine):
     """Create an async database session for testing."""
+
     async def _get_session():
         async with async_db_engine.connect() as conn:
             async_session = AsyncSession(bind=conn, expire_on_commit=False)
             yield async_session
+
     return _get_session()
 
 
@@ -80,7 +82,10 @@ def db_connection(test_db_url):
     """Create a psycopg connection for testing repositories directly."""
     import psycopg
     from psycopg.rows import dict_row
-    conn = psycopg.connect(test_db_url.replace("postgresql://", "postgresql://"), row_factory=dict_row)
+
+    conn = psycopg.connect(
+        test_db_url.replace("postgresql://", "postgresql://"), row_factory=dict_row
+    )
     conn.autocommit = False
     yield conn
     conn.rollback()

@@ -2,6 +2,7 @@
 """
 Select a diverse sample of SEC companies for stress testing.
 """
+
 import asyncio
 import os
 import sys
@@ -97,6 +98,7 @@ LARGE_CAP_TICKERS = {
     "GM": "General Motors Company",
 }
 
+
 async def main():
     # Set the user agent from environment
     user_agent = os.environ.get("SEC_USER_AGENT")
@@ -129,7 +131,11 @@ async def main():
         us_exchanges = {"NYSE", "NASDAQ", "AMEX"}
         us_ciks = set()
         for company in companies:
-            if company.exchange in us_exchanges and company.ticker and company.cik not in large_cap_ciks:
+            if (
+                company.exchange in us_exchanges
+                and company.ticker
+                and company.cik not in large_cap_ciks
+            ):
                 us_ciks.add(company.cik)
 
         # We want 50 small-cap US companies
@@ -143,7 +149,11 @@ async def main():
         # 3. Foreign private issuers: non-US exchange with ticker
         foreign_ciks = set()
         for company in companies:
-            if company.exchange not in us_exchanges and company.exchange and company.ticker:
+            if (
+                company.exchange not in us_exchanges
+                and company.exchange
+                and company.ticker
+            ):
                 foreign_ciks.add(company.cik)
 
         # We want 30 foreign companies
@@ -176,7 +186,9 @@ async def main():
         remaining_needed = target - len(selected_ciks)
         if remaining_needed > 0:
             # Get all remaining companies (not already selected) and sort by CIK
-            remaining_ciks = [company.cik for company in companies if company.cik not in selected_ciks]
+            remaining_ciks = [
+                company.cik for company in companies if company.cik not in selected_ciks
+            ]
             remaining_ciks.sort()
             # Take the first 'remaining_needed' companies
             fill_ciks = set(remaining_ciks[:remaining_needed])
@@ -198,7 +210,10 @@ async def main():
         print(f"  Small-cap US: {len(small_cap_ciks)}")
         print(f"  Foreign: {len(foreign_selected)}")
         print(f"  No ticker: {len(no_ticker_selected)}")
-        print(f"  Fill: {len(selected_ciks) - len(large_cap_ciks) - len(small_cap_ciks) - len(foreign_selected) - len(no_ticker_selected)}")
+        print(
+            f"  Fill: {len(selected_ciks) - len(large_cap_ciks) - len(small_cap_ciks) - len(foreign_selected) - len(no_ticker_selected)}"
+        )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

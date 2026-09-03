@@ -1,4 +1,5 @@
 """Unit tests for SEC EDGAR HTTP client."""
+
 import json
 import os
 import tempfile
@@ -91,7 +92,9 @@ class TestGetCompanyTickers:
     """Test get_company_tickers method."""
 
     @pytest.mark.asyncio
-    async def test_get_company_tickers_from_remote_url(self, sec_client, mock_aiohttp_session):
+    async def test_get_company_tickers_from_remote_url(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test fetching company tickers from remote URL."""
         # Mock response data
         mock_data = {
@@ -101,9 +104,12 @@ class TestGetCompanyTickers:
             ]
         }
 
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_request_with_retry', return_value=mock_data) as mock_request:
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(
+                sec_client, "_request_with_retry", return_value=mock_data
+            ) as mock_request,
+        ):
             companies = await sec_client.get_company_tickers()
 
             # Verify the request was made
@@ -134,14 +140,17 @@ class TestGetCompanyTickers:
             ]
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(test_data, f)
             temp_file = f.name
 
         try:
             # Patch the SEC_COMPANY_TICKERS_URL constant directly
             with (
-                patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', temp_file),
+                patch(
+                    "financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL",
+                    temp_file,
+                ),
                 patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
             ):
                 test_client = SECClient(max_retries=2)
@@ -172,7 +181,7 @@ class TestGetCompanyTickers:
             ]
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(test_data, f)
             temp_file = f.name
 
@@ -180,7 +189,10 @@ class TestGetCompanyTickers:
             file_url = f"file://{temp_file}"
             # Patch the SEC_COMPANY_TICKERS_URL constant directly
             with (
-                patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', file_url),
+                patch(
+                    "financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL",
+                    file_url,
+                ),
                 patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
             ):
                 test_client = SECClient(max_retries=2)
@@ -201,7 +213,10 @@ class TestGetCompanyTickers:
         """Test handling of missing local file."""
         # Patch the SEC_COMPANY_TICKERS_URL constant directly
         with (
-            patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', "/nonexistent/file.json"),
+            patch(
+                "financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL",
+                "/nonexistent/file.json",
+            ),
             patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
             pytest.raises(SECClientError, match="Failed to load local file"),
         ):
@@ -211,14 +226,17 @@ class TestGetCompanyTickers:
     @pytest.mark.asyncio
     async def test_get_company_tickers_local_file_invalid_json(self):
         """Test handling of invalid JSON in local file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write('{"invalid": json}')  # Invalid JSON
             temp_file = f.name
 
         try:
             # Patch the SEC_COMPANY_TICKERS_URL constant directly
             with (
-                patch('financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL', temp_file),
+                patch(
+                    "financial_database.providers.sec.client.SEC_COMPANY_TICKERS_URL",
+                    temp_file,
+                ),
                 patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}),
                 pytest.raises(SECClientError, match="Failed to load local file"),
             ):
@@ -232,9 +250,10 @@ class TestGetCompanyTickers:
         """Test handling of empty data response."""
         mock_data = {"data": []}
 
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_request_with_retry', return_value=mock_data):
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_request_with_retry", return_value=mock_data),
+        ):
             companies = await sec_client.get_company_tickers()
             assert len(companies) == 0
 
@@ -254,7 +273,9 @@ class TestGetCompanyTickers:
         # Patch the _request_with_retry method directly on a client instance
         with patch.dict(os.environ, {"SEC_USER_AGENT": "test-agent"}):
             test_client = SECClient(max_retries=2)
-            with patch.object(test_client, '_request_with_retry', return_value=mock_data):
+            with patch.object(
+                test_client, "_request_with_retry", return_value=mock_data
+            ):
                 companies = await test_client.get_company_tickers()
                 # Only the first valid item should be processed
                 assert len(companies) == 1
@@ -337,18 +358,24 @@ class TestGetCompanyFacts:
 
 class TestRequestWithRetry:
     """Test _request_with_retry method."""
+
     @pytest.mark.asyncio
     async def test_request_with_retry_success(self, sec_client, mock_aiohttp_session):
         """Test successful request."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'):
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
             # Set up the mock session.get to return our context manager
-            mock_aiohttp_session.get.return_value.__aenter__.return_value.read = AsyncMock(return_value=b'{"key": "value"}')
-            mock_aiohttp_session.get.return_value.__aenter__.return_value.headers = {"Content-Type": "application/json"}
+            mock_aiohttp_session.get.return_value.__aenter__.return_value.read = (
+                AsyncMock(return_value=b'{"key": "value"}')
+            )
+            mock_aiohttp_session.get.return_value.__aenter__.return_value.headers = {
+                "Content-Type": "application/json"
+            }
             mock_aiohttp_session.get.return_value.__aenter__.return_value.status = 200
 
             result = await sec_client._request_with_retry("http://test.com")
@@ -357,9 +384,10 @@ class TestRequestWithRetry:
     @pytest.mark.asyncio
     async def test_request_with_retry_404(self, sec_client, mock_aiohttp_session):
         """Test 404 response raises SECNotFoundError."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'):
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
@@ -370,19 +398,24 @@ class TestRequestWithRetry:
             mock_response.__aexit__ = AsyncMock(return_value=None)
 
             # Configure the mock session.get to return a context manager that yields this response
-            mock_aiohttp_session.get.return_value.__aenter__.return_value = mock_response
+            mock_aiohttp_session.get.return_value.__aenter__.return_value = (
+                mock_response
+            )
             mock_aiohttp_session.get.return_value.__aexit__.return_value = None
 
             with pytest.raises(SECNotFoundError):
                 await sec_client._request_with_retry("http://test.com/notfound")
 
     @pytest.mark.asyncio
-    async def test_request_with_retry_429_then_success(self, sec_client, mock_aiohttp_session):
+    async def test_request_with_retry_429_then_success(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test 429 response with retry-after header, then success."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'), \
-             patch.object(sec_client, '_wait_with_shutdown_check') as mock_wait:
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+            patch.object(sec_client, "_wait_with_shutdown_check") as mock_wait,
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
@@ -402,20 +435,28 @@ class TestRequestWithRetry:
             response_200.__aexit__ = AsyncMock(return_value=None)
 
             # Set up the mock session.get to return context managers that yield these responses
-            mock_aiohttp_session.get.return_value.__aenter__.side_effect = [response_429, response_200]
+            mock_aiohttp_session.get.return_value.__aenter__.side_effect = [
+                response_429,
+                response_200,
+            ]
             mock_aiohttp_session.get.return_value.__aexit__.side_effect = [None, None]
 
-            result = await sec_client._request_with_retry("http://test.com", max_retries=2)
+            result = await sec_client._request_with_retry(
+                "http://test.com", max_retries=2
+            )
             assert result == {"success": True}
             # Should have called wait once for the retry delay
             assert mock_wait.call_count >= 1
 
     @pytest.mark.asyncio
-    async def test_request_with_retry_429_exhausted(self, sec_client, mock_aiohttp_session):
+    async def test_request_with_retry_429_exhausted(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test 429 response when retries are exhausted."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'):
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
@@ -430,16 +471,21 @@ class TestRequestWithRetry:
             mock_aiohttp_session.get.return_value.__aenter__.return_value = response
             mock_aiohttp_session.get.return_value.__aexit__.return_value = None
 
-            with pytest.raises(SECRateLimitError, match="Rate limit exceeded after 2 retries"):
+            with pytest.raises(
+                SECRateLimitError, match="Rate limit exceeded after 2 retries"
+            ):
                 await sec_client._request_with_retry("http://test.com", max_retries=2)
 
     @pytest.mark.asyncio
-    async def test_request_with_retry_5xx_then_success(self, sec_client, mock_aiohttp_session):
+    async def test_request_with_retry_5xx_then_success(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test 5xx response with retry, then success."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'), \
-             patch.object(sec_client, '_wait_with_shutdown_check') as mock_wait:
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+            patch.object(sec_client, "_wait_with_shutdown_check") as mock_wait,
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
@@ -458,20 +504,28 @@ class TestRequestWithRetry:
             response_200.__aexit__ = AsyncMock(return_value=None)
 
             # Set up the mock session.get to return context managers that yield these responses
-            mock_aiohttp_session.get.return_value.__aenter__.side_effect = [response_500, response_200]
+            mock_aiohttp_session.get.return_value.__aenter__.side_effect = [
+                response_500,
+                response_200,
+            ]
             mock_aiohttp_session.get.return_value.__aexit__.side_effect = [None, None]
 
-            result = await sec_client._request_with_retry("http://test.com", max_retries=2)
+            result = await sec_client._request_with_retry(
+                "http://test.com", max_retries=2
+            )
             assert result == {"success": True}
             # Should have called wait once for the retry delay
             assert mock_wait.call_count >= 1
 
     @pytest.mark.asyncio
-    async def test_request_with_retry_5xx_exhausted(self, sec_client, mock_aiohttp_session):
+    async def test_request_with_retry_5xx_exhausted(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test 5xx response when retries are exhausted."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'):
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
@@ -485,16 +539,21 @@ class TestRequestWithRetry:
             mock_aiohttp_session.get.return_value.__aenter__.return_value = response
             mock_aiohttp_session.get.return_value.__aexit__.return_value = None
 
-            with pytest.raises(SECServerError, match="Server error 500 after 2 retries"):
+            with pytest.raises(
+                SECServerError, match="Server error 500 after 2 retries"
+            ):
                 await sec_client._request_with_retry("http://test.com", max_retries=2)
 
     @pytest.mark.asyncio
-    async def test_request_with_retry_network_error_then_success(self, sec_client, mock_aiohttp_session):
+    async def test_request_with_retry_network_error_then_success(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test network error with retry, then success."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'), \
-             patch.object(sec_client, '_wait_with_shutdown_check') as mock_wait:
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+            patch.object(sec_client, "_wait_with_shutdown_check") as mock_wait,
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
@@ -508,12 +567,15 @@ class TestRequestWithRetry:
             response_200.__aexit__ = AsyncMock(return_value=None)
 
             # Set up the mock session.get to raise ClientError first, then return success
-            mock_aiohttp_session.get.return_value.__aenter__.side_effect = ClientError("Network error")
+            mock_aiohttp_session.get.return_value.__aenter__.side_effect = ClientError(
+                "Network error"
+            )
             mock_aiohttp_session.get.return_value.__aexit__.side_effect = None
 
             # Second call - need to set up the return value for when it's called again
             # We'll use a side effect that changes on the second call
             call_count = 0
+
             def side_effect(*args, **kwargs):
                 nonlocal call_count
                 call_count += 1
@@ -529,23 +591,30 @@ class TestRequestWithRetry:
 
             sec_client._session.get.side_effect = side_effect
 
-            result = await sec_client._request_with_retry("http://test.com", max_retries=2)
+            result = await sec_client._request_with_retry(
+                "http://test.com", max_retries=2
+            )
             assert result == {"success": True}
             # Should have called wait for network error retry
             assert mock_wait.call_count >= 1
 
     @pytest.mark.asyncio
-    async def test_request_with_retry_network_error_exhausted(self, sec_client, mock_aiohttp_session):
+    async def test_request_with_retry_network_error_exhausted(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test that network errors raise SECClientError after max_retries."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'), \
-             patch.object(sec_client, '_wait_with_shutdown_check') as mock_wait:
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+            patch.object(sec_client, "_wait_with_shutdown_check") as mock_wait,
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
             # Always return network error
-            mock_aiohttp_session.get.return_value.__aenter__.side_effect = ClientError("Network error")
+            mock_aiohttp_session.get.return_value.__aenter__.side_effect = ClientError(
+                "Network error"
+            )
             mock_aiohttp_session.get.return_value.__aexit__.return_value = None
 
             with pytest.raises(SECClientError, match="Network error after 2 retries"):
@@ -555,23 +624,28 @@ class TestRequestWithRetry:
             assert mock_wait.call_count >= 1
 
     @pytest.mark.asyncio
-    async def test_request_with_retry_client_response_error(self, sec_client, mock_aiohttp_session):
+    async def test_request_with_retry_client_response_error(
+        self, sec_client, mock_aiohttp_session
+    ):
         """Test handling of ClientResponseError."""
-        with patch.object(sec_client, '_ensure_session'), \
-             patch.object(sec_client, '_rate_limit'):
-
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(sec_client, "_rate_limit"),
+        ):
             # Set the session on the client to our mock
             sec_client._session = mock_aiohttp_session
 
             # Configure the mock session.get to return a context manager that yields an error
             error_context_manager = AsyncMock()
-            error_context_manager.__aenter__ = AsyncMock(side_effect=ClientResponseError(
-                request_info=MagicMock(),
-                history=(),
-                status=400,
-                message="Bad Request",
-                headers={}
-            ))
+            error_context_manager.__aenter__ = AsyncMock(
+                side_effect=ClientResponseError(
+                    request_info=MagicMock(),
+                    history=(),
+                    status=400,
+                    message="Bad Request",
+                    headers={},
+                )
+            )
             error_context_manager.__aexit__ = AsyncMock(return_value=None)
 
             mock_aiohttp_session.get.return_value = error_context_manager

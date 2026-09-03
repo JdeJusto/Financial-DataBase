@@ -1,193 +1,202 @@
 # Financial Database Architecture
 
-## Overview
+## Visión General
 
-The Financial Database is designed as a normalized, extensible PostgreSQL database for storing and managing financial data from various sources. The architecture emphasizes data integrity, provenance tracking, and flexibility to accommodate different financial data types and reporting frequencies.
+La Base de Datos Financiera está diseñada como una base de datos PostgreSQL normalizada y extensible para almacenar y gestionar datos financieros de diversas fuentes. La arquitectura enfatiza la integridad de datos, el seguimiento de procedencia y la flexibilidad para acomodar diferentes tipos de datos financieros y frecuencias de informe.
 
-## Design Principles
+## Principios de Diseño
 
-1. **Normalization**: Data is structured to minimize redundancy and dependency
-2. **Provenance**: Every data point traces back to its source provider and original document
-3. **Extensibility**: New data types and providers can be added without schema changes
-4. **Auditability**: Complete import history and data lineage tracking
-5. **Performance**: Strategic indexing for common query patterns
+1. **Normalización**: Los datos están estructurados para minimizar redundancia y dependencias
+2. **Procedencia**: Cada punto de datos rastrea hasta su proveedor origen y documento original
+3. **Extensibilidad**: nuevos tipos y proveedores de datos pueden agregarse sin cambios de esquema
+4. **Auditabilidad**: Historial completo de importación y rastreo de línea de datos
+5. **Rendimiento**: Índices estratégicos para patrones de consulta comunes
 
-## Core Components
+## Componentes Core
 
-### 1. Company and Security Master Data
+### 1. Datos Maestro de Empresas y Valores
 
-- **companies**: Core entity representing legal entities
-- **company_identifiers**: External identifiers (CIK, FIGI, ISIN, etc.)
-- **exchanges**: Stock exchanges and trading venues
-- **company_listings**: Junction table linking companies to exchanges with ticker information
+- **companies**: Entidad core que representa entidades legales
+- **company_identifiers**: Identificadores externos (CIK, FIGI, ISIN, etc.)
+- **exchanges**: Bolsas de valores y venues de trading
+- **company_listings**: Tabla junction que vincula empresas a exchanges con información de ticker
 
-### 2. Data Provenance Layer
+### 2. Capa de Proveniencia de Datos
 
-- **data_providers**: Sources of financial data (SEC, Bloomberg, Reuters, etc.)
-- Tracks provider type (price, fundamental, sec, etc.) for appropriate routing
+- **data_providers**: Fuentes de datos financieros (SEC, Bloomberg, Reuters, etc.)
+- Registra el tipo de proveedor (price, fundamental, sec, etc.) para enrutamiento apropiado
 
-### 3. Financial Data Storage
+### 3. Almacenamiento de Datos Financieros
 
-#### Time-Series Data
-- **prices**: OHLCV data with provider attribution
-- **dividends**: Dividend declarations and payments
-- **splits**: Stock split and spin-off events
+#### Datos en Serie Temporal
 
-#### Statement Data
-- **financial_facts**: Normalized financial statement line items
-  - Supports both instant (balance sheet) and duration (income statement) facts
-  - Period handling with nullable start date for instant facts
-  - Full concept, unit, and source attribution
+- **prices**: Datos OHLCV con atribución de proveedor
+- **dividends**: Déclaraciones y pagos de dividendos
+- **splits**: Eventos de división de acciones y desmembramientos
 
-#### Event Data
-- **filings**: Regulatory filings (10-K, 10-Q, 8-K, etc.)
-- Links to source documents and companies
+#### Datos de Estados Financieros
 
-### 4. Raw Data Preservation
+- **financial_facts**: Elementos de estados financieros normalizados
+  - Compatible tanto hechos instantáneas (balance) como duration (estado de resultados)
+  - Manejo de período con fecha start nullable para hechos instantáneas
+  - Atribución completa de concepto, unidad y fuente
 
-- **raw_documents**: Metadata for original source files
-  - Actual files stored in filesystem/object storage
-  - Database stores only metadata, checksums, and storage paths
-  - Enables reproducibility and audit trails
+#### Datos de Eventos
 
-### 5. Import and Audit Infrastructure
+- **filings**: Presentaciones regulatorias (10-K, 10-Q, 8-K, etc.)
+- Vincula a documentos fuente y empresas
 
-- **import_runs**: ETL/import audit trail
-  - Tracks pipeline execution, success/failure states
-  - Records processed, inserted, updated, and skipped
-  - Error collection and timing information
+### 4. Preservación de Datos Raw
 
-### 6. SEC EDGAR Provider Architecture
+- **raw_documents**: Metadatos de archivos fuente originales
+  - Archivos reales almacenados en filesystem/storage object
+  - La base de datos solo almacena metadatos, checksums y rutas
+  - Permite reproducibilidad y rastreo de auditoría
 
-The SEC provider implements a production-quality ingestion pipeline following the provider abstraction:
+### 5. Infraestructura de Importación y Auditoría
+
+- **import_runs**: Registro de auditoría ETL/import
+  - Rastrea ejecución de pipelines, estados éxito/fallo
+  - Registra procesados, insertados, actualizados y skipped
+  - Colección de errores e información de tiempo
+
+### 6. Arquitectura del Proveedor SEC EDGAR
+
+El proveedor SEC implementa un pipeline de ingestion de producción siguiendo la abstracción de proveedor:
 
 ```
 SEC EDGAR
     ↓
-Raw storage (filesystem)
+Almacenamiento Raw (filesystem)
     ↓
-Parser (XBRL/JSON → domain models)
+Parser (XBRL/JSON → modelos de dominio)
     ↓
-Validation (business rules, constraints)
+Validación (reglas de negocio, constraints)
     ↓
-Normalization (CIK, accession, exchange, units)
+Normalización (CIK, accession, exchange, units)
     ↓
-Repository (idempotent upserts)
+Repositorio (upserts idempotent)
     ↓
 PostgreSQL
 ```
 
-#### Provider Isolation
+#### Aislamiento del Proveedor
 
-- **src/financial_database/providers/sec/** - All SEC-specific logic isolated
-- **src/financial_database/providers/base.py** - Abstract base classes
-- Database repositories know nothing about SEC HTTP details
-- SEC client contains no SQL business logic
+- **src/financial_database/providers/sec/** - Toda la lógica específica SEC aislada
+- **src/financial_database/providers/base.py** - Clases base abstractas
+- Los repositorios de base de datos no conocen detalles HTTP de SEC
+- El cliente SEC no contiene lógica de negocio SQL
 
-#### SEC Client (`client.py`)
+#### Cliente SEC (`client.py`)
 
-- HTTPS only with explicit User-Agent (required by SEC)
-- Configurable timeouts, retries with exponential backoff
-- Respects HTTP 429 and Retry-After headers
-- Conservative rate limiting (10 req/s default)
-- Structured logging without secrets
-- Raw response storage with SHA-256 checksums
+- HTTPS solo con User-Agent explícito (requerido por SEC)
+- Timeouts configurables, reintentos con backoff exponencial
+- Respeta cabeceras HTTP 429 y Retry-After
+- Rate limiting conservador (10 req/s por defecto)
+- Registro estructurado sin secretos
+- Almacenamiento de respuestas raw con checksums SHA-256
 
-#### SEC Models (`models.py`)
+#### Modelos SEC (`models.py`)
 
-- `SECCompany` - Company universe from tickers exchange reference
-- `SECSubmissions` / `SECFiling` - Filing metadata (10-K, 10-Q, 8-K, 20-F, 40-F, 6-K)
-- `SECCompanyFacts` / `SECCompanyFact` / `SECCompanyFactValue` - XBRL parsed facts
-- CIK normalization (10-digit zero-padded canonical form)
-- Accession number normalization (dashes removed)
-- Exchange mapping (SEC names → internal codes with MIC)
+- `SECCompany` - Universo de empresas desde reference tickers
+- `SECSubmissions` / `SECFiling` - Metadatos de presentaciones (10-K, 10-Q, 8-K, 20-F, 40-F, 6-K)
+- `SECCompanyFacts` / `SECCompanyFact` / `SECCompanyFactValue` - Hechos XBRL parseados
+- Normalización de CIK (formato canonical de 10 dígitos con relleno a cero)
+- Normalización de accession number (dashes removidos)
+- Mapping de exchanges (nombres SEC → códigos internos con MIC)
 
-#### SEC Parser (`parser.py`)
+#### Parser SEC (`parser.py`)
 
-- Normalizes SEC data into domain models (`ParsedCompany`, `ParsedFiling`, `ParsedFinancialFact`)
-- Preserves XBRL namespace + concept identity (not collapsed)
-- Preserves original SEC units (USD, shares, USD/shares, pure, etc.)
-- Correctly distinguishes instant vs duration facts
-- Preserves frame information (CY2023, CY2023Q1, etc.)
-- Preserves fiscal period metadata (FY, Q1, Q2, Q3, Q4)
-- Validation before insertion
+- Normaliza datos SEC a modelos de dominio (`ParsedCompany`, `ParsedFiling`, `ParsedFinancialFact`)
+- Preserva identidad de namespace XBRL + concepto (sin colapsar)
+- Preserva unidades SEC originales (USD, shares, USD/shares, pure, etc.)
+- Distingue correctamente hechos instantáneas vs duration
+- Preserva información de frame (CY2023, CY2023Q1, etc.)
+- Preserva metadatos de period fiscal (FY, Q1, Q2, Q3, Q4)
+- Validación antes de inserción
 
-#### SEC Importer (`importer.py`)
+#### Importador SEC (`importer.py`)
 
-- Idempotent operations using database unique constraints
-- Raw document tracking with checksums (preserves history on content change)
-- Import run audit trail for every pipeline execution
-- Restatement support: original + amended facts coexist via filing_id/source_id
-- Incremental ingestion via raw_documents and source identifiers
-- Error handling with per-record recovery where safe
+- Operaciones idempotent usando constraints únicas de base de datos
+- Seguimiento de documentos raw con checksums (preserva historia en caso de cambio de contenido)
+- Registro de auditoría de importación para cada ejecución del pipeline
+- Soporte para restatement: hechos originales + hechos amended coexisten vía filing_id/source_id
+- Incremental ingestion vía raw_documents y source identifiers
+- Manejo de errores con recovery por registro donde sea seguro
 
-## Key Architectural Decisions
+## Decisiones Arquitectónicas Clave
 
-### UUID Primary Keys
-- All tables use UUIDs as primary keys for distributed system friendliness
-- Prevents key collisions when merging data from multiple sources
-- Generated using `gen_random_uuid()` for performance
+### Primary Keys UUID
 
-### Provider Attribution
-- Every major data table includes a `provider_id` foreign key
-- Enables tracking data lineage and resolving conflicts between providers
-- Provider-specific source IDs maintained where applicable
+- Todas las tablas usan UUIDs como primary keys para compatibilidad con sistemas distribuidos
+- Previene colisiones de keys al fusionar datos de múltiples fuentes
+- Generados usando `gen_random_uuid()` para rendimiento
 
-### Temporal Data Handling
-- Financial facts support both instant and period data through nullable `period_start`
-- Check constraints ensure temporal validity (`period_start <= period_end` or `period_start IS NULL`)
-- Import runs track execution timing for performance monitoring and SLA tracking
+### Atribución de Proveedor
 
-### Constraint-Based Integrity
-- Check constraints enforce business rules at the database level:
-  - Non-negative prices and volumes
-  - Valid date relationships
-  - Status enumeration validation
-  - Positive numerators/denominators for splits
+- Cada tabla major incluye un `provider_id` foreign key
+- Permite rastrear línea de datos y resolver conflictos entre proveedores
+- Source IDs específicos del proveedor mantienen donde sea aplicable
 
-### Indexing Strategy
-- Primary key indexes on all UUID columns
-- Foreign key indexes for join performance
-- Composite indexes for common query patterns:
-  - Company+concept+period for financial facts retrieval
-  - Listing+date for price/volume lookups
-  - Provider-based indexes for data source isolation
-  - Status and timing indexes for import audit queries
+### Manejo Temporal
 
-### Extensibility Patterns
-- JSONB metadata fields for flexible attribute storage
-- VARCHAR source IDs for provider-specific identifiers
-- Design allows adding new data types by following existing patterns
-- Migration system supports schema evolution
+- Hechos financieros soportan tanto datos instantáneos como periodo a través de `period_start` nullable
+- Constraints validan validez temporal (`period_start <= period_end` o `period_start IS NULL`)
+- Import runs rastrean tiempo de ejecución para monitoreo de desempeño y tracking SLA
 
-## Data Flow
+### Integrity Based on Constraints
 
-1. **Ingestion**: External data providers submit data through ETL pipelines
-2. **Staging**: Raw files preserved in filesystem/object storage with database metadata
-3. **Processing**: Data validated, normalized, and inserted into appropriate tables
-4. **Audit**: Import runs record processing statistics and any errors
-5. **Consumption**: Applications query normalized data with full provenance
+- Check constraints enforcen reglas de negocio a nivel de base de datos:
+  - Precios y volúmenes no negativos
+  - Relaciones de fecha válidas
+  - Validación de enumeración de status
+  - Números/denominadores positivos para splits
 
-### SEC-Specific Data Flow
+### Estrategia de Índices
+
+- Primary key indexes en todas las columnas UUID
+- Foreign key indexes para performance de joins
+- Composite indexes para patrones de consulta comunes:
+  - Company+concept+period para retrieval de financial facts
+  - Listing+date para lookups de price/volume
+  - Provider-based indexes para aislamiento de datos source
+  - Índices de status y timing para queries de import audit
+
+### Patrones de Extensibilidad
+
+- JSONB fields para almacenamiento flexible de atributos
+- VARCHAR source IDs para identifiers específicos del proveedor
+- El diseño permite agregar nuevos tipos de datos siguiendo patrones existentes
+- Sistema de migración soporta evolución de esquema
+
+## Flujo de Datos
+
+1. **Ingestion**: Proveedores externos de datos submiten datos a través de pipelines ETL
+2. **Staging**: Archivos raw preservados en filesystem/storage object con metadata de base de datos
+3. **Processing**: Datos validados, normalizados e insertados en tablas apropiadas
+4. **Audit**: Import runs registran estadísticas de procesamiento y cualquier error
+5. **Consumption**: Aplicaciones consultan datos normalizados con procedencia completa
+
+### Flujo de Datos Específico SEC
 
 1. **Universe**: Fetch company tickers exchange reference → upsert companies, identifiers, listings, exchanges
-2. **Submissions**: For each CIK, fetch submissions metadata → upsert filings with raw_document links
-3. **CompanyFacts**: For each CIK, fetch XBRL CompanyFacts → parse facts → validate → insert financial_facts
-4. **Provenance**: Every step creates raw_documents entries and import_runs records
+2. **Submissions**: Para cada CIK, fetch submissions metadata → upsert filings con enlaces raw_document
+3. **CompanyFacts**: Para cada CIK, fetch XBRL CompanyFacts → parse facts → validate → insert financial_facts
+4. **Provenance**: Cada paso crea raw_documents entries y import_runs records
 
-## Security Considerations
+## Consideraciones de Seguridad
 
-- Role-based access control recommended for production deployment
-- Connection SSL/TLS encryption
-- Regular backups and point-in-time recovery
-- Audit trail preserves all changes for compliance
-- SEC_USER_AGENT from environment (never hardcoded, never logged)
-- Raw SEC responses never committed to Git
+- Se recomienda control de acceso basado en roles para deployment en producción
+- Encriptación SSL/TLS de conexiones
+- Backups regulares y recovery punto-a-tiempo
+- Registro de auditoría preserva todos los cambios para compliance
+- SEC_USER_Agent from environment (never hardcoded, never logged)
+- Respuestas SEC raw nunca commiteadas a Git
 
-## Scalability Considerations
+## Consideraciones de Escalabilidad
 
-- Partitioning strategy can be implemented for large time-series tables
-- Read replicas for query distribution
-- Connection pooling for concurrent access
-- Archiving strategy for historical data beyond active retention period
-- SEC ingestion is intentionally conservative (rate limited, sequential)
+- Estrategia de particionamiento puede implementarse para tablas time-series grandes
+- Read replicas para distribución de queries
+- Connection pooling para acceso concurrente
+- Estrategia de archivado para datos históricos más allá del período de retención activo
+- Ingestion SEC es intencionalmente conservadora (rate limited, sequential)

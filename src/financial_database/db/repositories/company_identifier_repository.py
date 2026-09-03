@@ -41,7 +41,8 @@ class CompanyIdentifierRepository:
                     valid_to,
                 ),
             )
-            rows = cur.fetchall(); return rows[0] if rows else None
+            rows = cur.fetchall()
+            return rows[0] if rows else None
 
     def get_by_company_id(self, company_id: str) -> list[dict]:
         """Get all identifiers for a company."""

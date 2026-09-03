@@ -3,6 +3,7 @@
 Focused test for the checkpoint resume logic fix in bulk_ingest.py - Version 2
 """
 
+
 def test_ingest_companyfacts_checkpoint_logic():
     """Test the specific checkpoint logic we added to ingest_companyfacts"""
 
@@ -15,7 +16,7 @@ def test_ingest_companyfacts_checkpoint_logic():
         MockCompany("0000320193"),
         MockCompany("0000789019"),
         MockCompany("0001018724"),
-        MockCompany("0001234567")
+        MockCompany("0001234567"),
     ]
 
     print("=== Testing ingest_companyfacts checkpoint logic ===")
@@ -40,7 +41,9 @@ def test_ingest_companyfacts_checkpoint_logic():
             # Start from the next company after the checkpoint
             start_index = checkpoint_index + 1
             checkpoint_valid = True  # We found a valid checkpoint position
-            print(f"  Found checkpoint at index {checkpoint_index}, starting from {start_index}")
+            print(
+                f"  Found checkpoint at index {checkpoint_index}, starting from {start_index}"
+            )
         except ValueError:
             # Checkpoint CIK not found in current list
             # Find the first company with CIK > checkpoint.last_processed_cik
@@ -52,7 +55,9 @@ def test_ingest_companyfacts_checkpoint_logic():
             else:
                 # All CIKs are <= checkpoint.last_processed_cik, start from beginning
                 start_index = 0
-                print(f"  Checkpoint CIK not found, all CIKs <= checkpoint, starting from {start_index}")
+                print(
+                    f"  Checkpoint CIK not found, all CIKs <= checkpoint, starting from {start_index}"
+                )
 
     # Process each company starting from start_index
     processed = []
@@ -62,7 +67,11 @@ def test_ingest_companyfacts_checkpoint_logic():
 
         # Skip if already processed (resume from checkpoint)
         # Only apply this skip logic if we have a valid checkpoint position in our list
-        if checkpoint_valid and checkpoint_last_processed_cik and cik <= checkpoint_last_processed_cik:
+        if (
+            checkpoint_valid
+            and checkpoint_last_processed_cik
+            and cik <= checkpoint_last_processed_cik
+        ):
             print(f"  Skipping already processed CIK: {cik}")
             continue
         processed.append(cik)
@@ -103,7 +112,11 @@ def test_ingest_companyfacts_checkpoint_logic():
         cik = company.normalized_cik
 
         # Skip if already processed (resume from checkpoint)
-        if checkpoint_valid and checkpoint_last_processed_cik and cik <= checkpoint_last_processed_cik:
+        if (
+            checkpoint_valid
+            and checkpoint_last_processed_cik
+            and cik <= checkpoint_last_processed_cik
+        ):
             continue
         processed.append(cik)
 
@@ -135,7 +148,9 @@ def test_ingest_companyfacts_checkpoint_logic():
                     break
             else:
                 start_index = 0  # All CIKs are <= checkpoint (this is our fix)
-                print(f"  Checkpoint CIK not found, all CIKs <= checkpoint, starting from {start_index}")
+                print(
+                    f"  Checkpoint CIK not found, all CIKs <= checkpoint, starting from {start_index}"
+                )
 
     # Process each company starting from start_index
     processed = []
@@ -144,7 +159,11 @@ def test_ingest_companyfacts_checkpoint_logic():
         cik = company.normalized_cik
 
         # Skip if already processed (resume from checkpoint)
-        if checkpoint_valid and checkpoint_last_processed_cik and cik <= checkpoint_last_processed_cik:
+        if (
+            checkpoint_valid
+            and checkpoint_last_processed_cik
+            and cik <= checkpoint_last_processed_cik
+        ):
             continue
         processed.append(cik)
 
@@ -182,7 +201,11 @@ def test_ingest_companyfacts_checkpoint_logic():
         cik = company.normalized_cik
 
         # Skip if already processed (resume from checkpoint)
-        if checkpoint_valid and checkpoint_last_processed_cik and cik <= checkpoint_last_processed_cik:
+        if (
+            checkpoint_valid
+            and checkpoint_last_processed_cik
+            and cik <= checkpoint_last_processed_cik
+        ):
             continue
         processed.append(cik)
 
@@ -191,6 +214,7 @@ def test_ingest_companyfacts_checkpoint_logic():
     print("  ✓ PASS")
 
     print("\n✅ All checkpoint logic tests passed!")
+
 
 if __name__ == "__main__":
     test_ingest_companyfacts_checkpoint_logic()
