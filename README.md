@@ -9,6 +9,7 @@
 - Diseño flexible para acomodar varios tipos de datos financieros
 - Índices para patrones de consulta comunes
 - **Pipeline de ingestión SEC EDGAR** - Importación de datos de producción
+- **Pipeline de ingestión de precios de acciones** - Importación de precios históricos desde Stooq
 
 ## Descripción General del Esquema
 
@@ -159,12 +160,66 @@ SEC_USER_AGENT="TuApp/1.0 you@example.com" \
 
 Reanudar desde una interrupción con el mismo comando (el checkpoint es source-aware y reanuda automáticamente). Usar `--force` para restablecer el progreso y empezar desde cero.
 
+### Ingestión de Precios de Acciones
+
+El CLI `financial-db` provee comandos para ingestión de precios de acciones desde Yahoo Finance:
+
+```bash
+# Actualizar precios para todas las listas activas
+financial-db prices update
+
+# Actualizar precios con límite (para testing)
+financial-db prices update --limit 10
+
+# Ejecutar en modo seco (preview sin escribir)
+financial-db prices update --dry-run
+
+# Habilitar logging detallado
+financial-db prices update --verbose
+```
+
+El pipeline de precios:
+1. Obtiene todas las listas activas de la tabla `company_listings`
+2. Para cada lista, obtiene el código de bolsa y el ticker
+3. Mapea el código de bolsa a un símbolo de Yahoo Finance (ej: NASDAQ -> ticker sin sufijo)
+4. Obtiene los datos de precio más recientes usando la biblioteca yfinance
+5. Inserta los datos en la tabla `prices` evitando duplicados mediante restricciones únicas
+6. Registra una corrida de importación para trazabilidad
+
+#### Integración con Actualización Completa
+
+Para ejecutar tanto la actualización SEC incremental como la de precios en un solo comando:
+
+```bash
+# Ejecutar ambas actualizaciones (SEC y precios)
+financial-db update-all
+
+# Con opciones personalizadas
+financial-db update-all --sec-max-age-hours 12 --price-limit 50 --verbose
+```
+
+Esto ejecuta:
+1. `financial-db sec update-incremental` (con las opciones SEC especificadas)
+2. `financial-db prices update` (con las opciones de precio especificadas)
+
+### Scripts de Análisis SQL
+
+Se han creado scripts SQL reutilizables en el directorio `scripts/analysis/` para facilitar el análisis financiero:
+
+1. `company_overview.sql` - Información general de una empresa por CIK
+2. `financial_series.sql` - Serie temporal de métricas financieras con tasas de crecimiento y márgenes
+3. `ratios_advanced.sql` - Ratios avanzados incluyendo ROE, ROA, apalancamiento y valoración
+4. `compare_companies.sql` - Comparación de métricas clave entre múltiples empresas
+
+Véase `docs/analysis_scripts.md` para documentación detallada y ejemplos de uso.
+
 ## Documentación
 
 - [Descripción General de la Arquitectura](docs/architecture.md)
 - [Detalles del Esquema de Base de Datos](docs/database.md)
 - [Fuentes de Datos y Proveedores](docs/data-sources.md)
 - [Instrucciones de Carga Completa](docs/runbook_full_load.md)
+- [Scripts de Análisis SQL](docs/analysis_scripts.md)
 
 ## Desarrollo
 
@@ -189,6 +244,19 @@ python -m pytest tests/unit/test_sec_*.py
 1. Crear un nuevo archivo SQL en `db/migrations/` con el númerosequencial siguiente
 2. Agregar sus sentencias DDL
 3. El sistema de migraciones aplicará automáticamente las nuevas migraciones
+
+## Directrices para Agentes de IA
+
+Se ha creado un archivo `AGENTS.md` que proporciona directrices y información de referencia para asistentes de IA (como Claude) que trabajan en el proyecto Financial Database. Este archivo incluye:
+
+- Visión general del proyecto y estructura de directorios
+- Esquema de base de datos clave
+- Tareas comunes de desarrollo
+- Estándares de codificación para Python y SQL
+- Directrices específicas para agentes de IA
+- Consejos para solución de problemas
+
+Nota: Este archivo está incluido en `.gitignore` para evitar que se versióne, ya que está destinado como referencia viva para asistentes de IA y puede actualizarse frecuentemente.
 
 ## Aviso Legal
 

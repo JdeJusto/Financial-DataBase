@@ -45,6 +45,9 @@ pyrightconfig.json
 *.swp
 *.swo
 
+# AI Agent guidelines
+AGENTS.md
+
 # Mac
 .DS_Store
 
