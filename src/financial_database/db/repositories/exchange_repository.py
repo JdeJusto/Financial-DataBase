@@ -4,6 +4,7 @@ Handles exchanges where companies list.
 """
 
 import psycopg
+from uuid import UUID
 
 
 class ExchangeRepository:
@@ -31,6 +32,16 @@ class ExchangeRepository:
             )
             rows = cur.fetchall()
             return rows[0] if rows else None
+
+    def get(self, exchange_id: UUID | str) -> dict | None:
+        """Get exchange by ID."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, code, name, country, timezone, currency, created_at FROM exchanges WHERE id = %s",
+                (str(exchange_id),),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
 
     def get_by_code(self, code: str) -> dict | None:
         """Get exchange by code (ticker prefix like NASDAQ, NYSE)."""

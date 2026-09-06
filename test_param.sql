@@ -1,0 +1,1 @@
+SELECT :'cik_list' as test_param;

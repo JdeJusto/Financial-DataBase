@@ -3,9 +3,10 @@
 Connects company + exchange + ticker with historical validity.
 """
 
-from typing import Any
+from typing import Any, Optional
 
 import psycopg
+from psycopg.rows import dict_row
 
 
 class CompanyListingRepository:
@@ -74,3 +75,18 @@ class CompanyListingRepository:
             )
             row = cur.fetchone()
             return row["is_active"] if row else False
+
+    def list_active(self, limit: Optional[int] = None) -> list[dict]:
+        """List all active listings (not delisted)."""
+        with self.conn.cursor(row_factory=dict_row) as cur:
+            query = """
+                SELECT cl.id, cl.company_id, cl.exchange_id, cl.ticker, cl.share_class, cl.listing_date, cl.delisting_date, cl.is_primary,
+                       e.code, e.name, e.country, e.timezone, e.currency
+                FROM company_listings cl
+                JOIN exchanges e ON cl.exchange_id = e.id
+                WHERE cl.delisting_date IS NULL
+            """
+            if limit is not None:
+                query += f" LIMIT {int(limit)}"
+            cur.execute(query)
+            return [dict(row) for row in cur.fetchall()]

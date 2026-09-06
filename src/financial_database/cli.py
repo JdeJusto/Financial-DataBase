@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
@@ -26,6 +27,7 @@ from financial_database.providers.sec.bulk_ingest import (
 )
 from financial_database.providers.sec.importer import create_sec_importer
 from financial_database.providers.sec.models import normalize_cik
+from financial_database.providers.price.yfinance_importer import YFinanceImporter
 
 
 @click.group()
@@ -1014,6 +1016,264 @@ def sec_update_incremental(
 
 # Import Stats class for type hints
 from financial_database.providers.sec import ImportStats
+
+
+@cli.group()
+def prices():
+    """Stock price ingestion commands."""
+    pass
+
+
+@prices.command("update")
+@click.option("--database-url", default=None, help="PostgreSQL connection URL")
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Limit number of listings to process (for testing)",
+)
+@click.option("--dry-run", is_flag=True, help="Validate without writing to database")
+@click.option("--verbose", is_flag=True, help="Increase logging detail")
+def prices_update(
+    database_url: str | None,
+    limit: int | None,
+    dry_run: bool,
+    verbose: bool,
+):
+    """Update stock prices from Yahoo Finance for all active listings."""
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+    if dry_run:
+        print("🔍 Dry run - validating price update setup...")
+        print(f"   Limit: {limit or 'none (all listings)'}")
+        # We could do a quick check here, but for simplicity we just show the config.
+        return
+
+    async def _run_price_update():
+        # Get database connection
+        effective_database_url = database_url or os.environ.get(
+            "DATABASE_URL",
+            "postgresql://financial:test@localhost:5432/financial_database",
+        )
+
+        start_time = time.time()
+
+        # Create importer
+        print("🔧 Initializing price updater...")
+        importer = YFinanceImporter(database_url=effective_database_url)
+
+        try:
+            # Record the import run for audit/provenance
+            provider = importer.provider_repo.get_by_name("Yahoo Finance")
+            if not provider:
+                # This should not happen because the importer creates it if missing, but just in case.
+                provider = importer.provider_repo.create(
+                    {
+                        "name": "Yahoo Finance",
+                        "type": "price",
+                        "display_name": "Yahoo Finance",
+                        "base_url": "https://finance.yahoo.com",
+                        "is_active": True,
+                    }
+                )
+            provider_id = str(provider["id"])
+            run = importer.import_runs.create(
+                str(provider_id), "prices_update", "running"
+            )
+            run_id = str(run["id"])
+            run_start_time = time.time()
+
+            print("📥 Fetching latest prices from Yahoo Finance...")
+            stats = await importer.run(limit=limit)
+
+            # Finalize import run
+            duration = int(time.time() - run_start_time)
+            error_dict = None
+            if stats.errors:
+                error_dict = {
+                    "error_count": len(stats.errors),
+                    "sample_errors": stats.errors[:5],
+                }
+
+            importer.import_runs.update(
+                run_id,
+                status="success" if len(stats.errors) == 0 else "partial",
+                records_processed=stats.records_processed,
+                records_inserted=stats.records_inserted,
+                records_updated=stats.records_updated,
+                records_skipped=stats.records_skipped,
+                errors=error_dict,
+                finished_at=datetime.now(UTC),
+                duration_seconds=duration,
+            )
+
+            elapsed = time.time() - start_time
+            print("\n✅ Price update complete:")
+            print(f"   Listings processed: {stats.records_processed}")
+            print(f"   Prices inserted: {stats.records_inserted}")
+            print(f"   Prices updated: {stats.records_updated}")
+            print(f"   Prices skipped: {stats.records_skipped}")
+            print(f"   Errors encountered: {len(stats.errors)}")
+            print(f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)")
+
+            if stats.errors:
+                print("\n⚠️  Errors (first 5):")
+                for err in stats.errors[:5]:
+                    print(f"   - {err}")
+
+        except Exception as e:
+            # Mark the import run as failed
+            if "run_id" in locals():
+                importer.import_runs.update(
+                    run_id,
+                    status="failed",
+                    records_processed=0,
+                    records_inserted=0,
+                    records_updated=0,
+                    records_skipped=0,
+                    errors={"error": str(e), "type": type(e).__name__},
+                    finished_at=datetime.now(UTC),
+                    duration_seconds=int(time.time() - run_start_time),
+                )
+
+            print(f"❌ Price update failed: {e}", file=sys.stderr)
+            logging.getLogger(__name__).exception("Price update failed")
+            sys.exit(1)
+
+    # Run the async function
+    asyncio.run(_run_price_update())
+
+
+@cli.command()
+@click.option("--database-url", default=None, help="PostgreSQL connection URL")
+@click.option(
+    "--sec-max-age-hours",
+    type=int,
+    default=24,
+    help="Maximum age of SEC data before considering it stale (default: 24 hours)",
+)
+@click.option(
+    "--sec-batch-size",
+    type=int,
+    default=100,
+    help="Number of companies to process in each batch for SEC update (default: 100)",
+)
+@click.option(
+    "--sec-limit",
+    type=int,
+    default=None,
+    help="Limit number of companies to process for SEC update (for testing)",
+)
+@click.option(
+    "--price-limit",
+    type=int,
+    default=None,
+    help="Limit number of listings to process for price update (for testing)",
+)
+@click.option("--dry-run", is_flag=True, help="Validate without writing to database")
+@click.option("--verbose", is_flag=True, help="Increase logging detail")
+def update_all(
+    database_url: str | None,
+    sec_max_age_hours: int,
+    sec_batch_size: int,
+    sec_limit: int | None,
+    price_limit: int | None,
+    dry_run: bool,
+    verbose: bool,
+):
+    """Run both SEC incremental update and stock price update.
+
+    This command runs:
+    1. financial-db sec update-incremental (with given options)
+    2. financial-db prices update (with given options)
+
+    Safe to run daily.
+    """
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+    if dry_run:
+        print("🔍 Dry run - validating update-all setup...")
+        print(f"   SEC max age: {sec_max_age_hours} hours")
+        print(f"   SEC batch size: {sec_batch_size}")
+        if sec_limit is not None and sec_limit > 0:
+            print(f"   SEC limit: {sec_limit}")
+        if price_limit is not None and price_limit > 0:
+            print(f"   Price limit: {price_limit}")
+        # We could do a quick check here, but for simplicity we just show the config.
+        return
+
+    # Run SEC incremental update
+    print("🚀 Starting SEC incremental update...")
+    # We'll reuse the same logic from sec_update_incremental by calling its callback via subprocess
+    # to avoid code duplication while keeping the implementation simple
+    sec_cmd = [
+        sys.executable,
+        "-m",
+        "financial_database.cli",
+        "sec",
+        "update-incremental",
+    ]
+    if database_url:
+        sec_cmd.extend(["--database-url", database_url])
+    sec_cmd.extend(["--max-age-hours", str(sec_max_age_hours)])
+    sec_cmd.extend(["--batch-size", str(sec_batch_size)])
+    if sec_limit is not None:
+        sec_cmd.extend(["--limit", str(sec_limit)])
+    if dry_run:
+        sec_cmd.append("--dry-run")
+    if verbose:
+        sec_cmd.append("--verbose")
+
+    try:
+        result = subprocess.run(sec_cmd, check=True, capture_output=False, text=True)
+        if result.returncode != 0:
+            print(f"❌ SEC incremental update failed with return code {result.returncode}")
+            sys.exit(result.returncode)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ SEC incremental update failed: {e}")
+        sys.exit(e.returncode)
+    except FileNotFoundError:
+        print("❌ Could not find financial_database.cli module. Make sure the package is installed correctly.")
+        sys.exit(1)
+
+    # Run price update
+    print("\n🚀 Starting price update...")
+    price_cmd = [
+        sys.executable,
+        "-m",
+        "financial_database.cli",
+        "prices",
+        "update",
+    ]
+    if database_url:
+        price_cmd.extend(["--database-url", database_url])
+    if price_limit is not None:
+        price_cmd.extend(["--limit", str(price_limit)])
+    if dry_run:
+        price_cmd.append("--dry-run")
+    if verbose:
+        price_cmd.append("--verbose")
+
+    try:
+        result = subprocess.run(price_cmd, check=True, capture_output=False, text=True)
+        if result.returncode != 0:
+            print(f"❌ Price update failed with return code {result.returncode}")
+            sys.exit(result.returncode)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Price update failed: {e}")
+        sys.exit(e.returncode)
+    except FileNotFoundError:
+        print("❌ Could not find financial_database.cli module. Make sure the package is installed correctly.")
+        sys.exit(1)
+
+    print("\n✅ All updates completed successfully!")
+
 
 if __name__ == "__main__":
     cli()

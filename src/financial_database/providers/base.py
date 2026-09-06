@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
+import httpx
 
 
 @dataclass
@@ -36,6 +37,23 @@ class BaseProvider(ABC):
     @abstractmethod
     async def import_data(self, *args, **kwargs) -> ImportResult:
         """Import data from the provider."""
+
+
+class BaseHTTPClient(BaseProvider):
+    """Base HTTP client for data providers."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self._client = httpx.AsyncClient(*args, **kwargs)
+        self.headers = {}
+
+    async def get(self, url: str, **kwargs) -> httpx.Response:
+        """Perform GET request."""
+        return await self._client.get(url, **kwargs)
+
+    async def close(self) -> None:
+        """Close client connections."""
+        await self._client.aclose()
 
 
 class BaseClient(ABC):
