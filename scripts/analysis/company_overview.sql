@@ -1,5 +1,5 @@
 -- Reusable SQL script for company overview
--- Takes a CIK as parameter (:cik)
+-- Takes a CIK as parameter (%(cik)s)
 -- Returns key company information
 
 SELECT
@@ -19,5 +19,5 @@ LEFT JOIN company_identifiers ci ON c.id = ci.company_id
     )
 LEFT JOIN financial_facts f ON c.id = f.company_id
 LEFT JOIN filings fi ON c.id = fi.company_id
-WHERE ci.identifier_value = :cik
+WHERE ci.identifier_value = %(cik)s
 GROUP BY c.legal_name, c.sector, c.industry, c.country;
