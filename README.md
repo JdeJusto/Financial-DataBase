@@ -211,6 +211,28 @@ Se han creado scripts SQL reutilizables en el directorio `scripts/analysis/` par
 3. `ratios_advanced.sql` - Ratios avanzados incluyendo ROE, ROA, apalancamiento y valoración
 4. `compare_companies.sql` - Comparación de métricas clave entre múltiples empresas
 
+### Salud de Mapeo Ticker→CIK
+
+`scripts/check_ticker_health.sql` audita la integridad del mapeo ticker→CIK
+después de cualquier cambio de asociación ticker→empresa. Expone las tres
+clases de defecto que permitieron que XOM se resolviera a la entidad "stub"
+equivocada:
+
+1. **True stubs** — el CIK de la empresa no aparece en ninguno de sus
+   accessions 10-K/10-Q/20-F/40-F propios; la fila es un stub que se tragó
+   hechos reales de otro filer (firmado por un CIK distinto).
+2. **Multi-CIK** — un único ticker del universo activo mapeado a dos o más
+   CIK distintos (ambigüedad = riesgo de elegir el incorrecto).
+3. **Zero-facts** — un ticker activo del universo cuya empresa no tiene ningún
+   hecho financiero.
+
+Cada sección imprime solo las filas infractoras; una base sana devuelve
+conjuntos vacíos. Ejecutar tras cualquier modificación de carga o de mapeo:
+
+```bash
+psql "$FINANCIAL_DATABASE_URL" -f scripts/check_ticker_health.sql
+```
+
 Véase `docs/analysis_scripts.md` para documentación detallada y ejemplos de uso.
 
 ## Documentación

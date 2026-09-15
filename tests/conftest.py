@@ -103,25 +103,30 @@ def db_connection(test_db_url):
         with open(script_path, 'r') as f:
             script_content = f.read()
 
-        # Replace parameters in the script
+        # Replace parameters in the script.
+        # Scripts may use either psql-style (:key) or psycopg2-style
+        # (%(key)s) named placeholders; support both.
         if params:
             for key, value in params.items():
                 if isinstance(value, str):
                     # For string values, we need to quote them and escape single quotes
                     escaped_value = value.replace("'", "''")
-                    script_content = script_content.replace(f':{key}', f"'{escaped_value}'")
+                    quoted = f"'{escaped_value}'"
+                    script_content = script_content.replace(f':{key}', quoted)
+                    script_content = script_content.replace(f'%({key})s', quoted)
                 elif isinstance(value, list):
                     # Handle array parameters (for IN clauses etc.)
                     if all(isinstance(item, str) for item in value):
                         quoted_items = ["'{}'".format(item.replace("'", "''")) for item in value]
                         array_str = "ARRAY[{}]".format(','.join(quoted_items))
-                        script_content = script_content.replace(':{key}'.format(key=key), array_str)
                     else:
                         array_str = f"ARRAY[{','.join(str(item) for item in value)}]"
-                        script_content = script_content.replace(f':{key}', array_str)
+                    script_content = script_content.replace(f':{key}', array_str)
+                    script_content = script_content.replace(f'%({key})s', array_str)
                 else:
                     # For numeric values
                     script_content = script_content.replace(f':{key}', str(value))
+                    script_content = script_content.replace(f'%({key})s', str(value))
 
         with conn.cursor() as cur:
             cur.execute(script_content)
