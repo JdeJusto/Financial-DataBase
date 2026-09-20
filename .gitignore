@@ -23,6 +23,8 @@ images/
 # Environment
 .env*
 **.env*
+# ...but the example file is documented in the README and committed on purpose
+!.env.example
 
 # Data (datos generados durante ejecución, no versionar)
 data/raw/
