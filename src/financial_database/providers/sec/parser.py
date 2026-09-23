@@ -179,13 +179,20 @@ class SECParser:
         for namespace, concepts in company_facts.facts.items():
             for concept_name, fact in concepts.items():
                 for value in fact.values:
-                    # Determine fiscal year/period
-                    fiscal_year = value.fiscal_year
-                    fiscal_period = value.fiscal_period or "FY"
-
-                    # If missing, try to infer from period_end
-                    if fiscal_year is None and value.period_end:
+                    # Determine fiscal year/period. The fiscal year is derived
+                    # deterministically from period_end (not from SEC's 'fy'
+                    # fiscal-year-focus label) so every sync buckets the same
+                    # period into the same fiscal_year. SEC's 'fy' is unstable:
+                    # when a later 10-K/10-Q restates comparatives it can
+                    # re-label the SAME period with a different 'fy' (e.g. a
+                    # Jan-31 FY2026 period ingested once as fy=2025 on
+                    # 2026-03-02 and again as fy=2026 on 2026-04-16), splitting
+                    # one period across two fiscal_year buckets.
+                    if value.period_end is not None:
                         fiscal_year = value.period_end.year
+                    else:
+                        fiscal_year = value.fiscal_year
+                    fiscal_period = value.fiscal_period or "FY"
 
                     if fiscal_year is None:
                         logger.warning(

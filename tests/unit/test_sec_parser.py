@@ -438,6 +438,57 @@ class TestSECParser:
         assert len(parsed) == 1
         assert parsed[0].fiscal_year == 2023  # Inferred from period_end
 
+    def test_parse_company_facts_fiscal_year_is_period_end_year(
+        self, parser
+    ):
+        """fiscal_year must follow period_end.year, not SEC's unstable 'fy'
+        label. The same period can be re-labeled with a different SEC 'fy' when
+        a later filing restates comparatives (e.g. Jan-31 FY2026 period ingested
+        once as fy=2025 and later as fy=2026)."""
+        facts = SECCompanyFacts(
+            cik="0001108524",
+            entity_name="Salesforce, Inc.",
+            facts={
+                "us-gaap": {
+                    "Revenues": SECCompanyFact(
+                        concept="Revenues",
+                        namespace="us-gaap",
+                        unit="USD",
+                        values=[
+                            SECCompanyFactValue(
+                                value=37895000000,
+                                period_start=date(2025, 2, 1),
+                                period_end=date(2026, 1, 31),
+                                fiscal_year=2025,  # SEC mislabels this period
+                                fiscal_period="FY",
+                                form="10-K",
+                                filing_date=date(2026, 3, 2),
+                                accession_number="0001108524-26-000001",
+                            ),
+                            SECCompanyFactValue(
+                                value=37895000000,
+                                period_start=date(2025, 2, 1),
+                                period_end=date(2026, 1, 31),
+                                fiscal_year=2026,  # SEC re-labels on re-sync
+                                fiscal_period="FY",
+                                form="10-K",
+                                filing_date=date(2026, 4, 16),
+                                accession_number="0001108524-26-000001",
+                            ),
+                        ],
+                    ),
+                },
+            },
+        )
+
+        parsed = parser.parse_company_facts(facts, {})
+
+        assert len(parsed) == 2
+        # Both rows land in the SAME bucket (period_end.year) regardless of
+        # the SEC 'fy' each ingestion run attached to them.
+        assert {f.fiscal_year for f in parsed} == {2026}
+        assert parsed[0].fiscal_period == "FY"
+
     def test_parse_company_facts_skips_no_fiscal_year_no_period_end(
         self, parser, caplog
     ):
