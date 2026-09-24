@@ -88,6 +88,10 @@ class SECClient:
         self._last_request_time = 0.0
         self._rate_limit_lock = asyncio.Lock()
 
+        # Cache of parsed company tickers (see get_company_tickers). Fetched
+        # at most once per SECClient instance; force_refresh bypasses it.
+        self._tickers_cache: list[SECCompany] | None = None
+
         # Graceful shutdown state
         self._shutdown_requested = False
         self._shutdown_event = asyncio.Event()
@@ -424,8 +428,24 @@ class SECClient:
         )
         return str(filepath), checksum
 
-    async def get_company_tickers(self) -> list[SECCompany]:
-        """Fetch SEC company tickers exchange reference data."""
+    async def get_company_tickers(
+        self, force_refresh: bool = False
+    ) -> list[SECCompany]:
+        """Fetch SEC company tickers exchange reference data.
+
+        The parsed list is memoized per SECClient instance: repeated calls
+        (e.g. one per company in update-incremental / sync_company) reuse the
+        first fetch instead of re-downloading + re-parsing
+        company_tickers_exchange.json every time. Pass ``force_refresh=True``
+        to bypass the cache and fetch a fresh copy.
+        """
+        if not force_refresh and self._tickers_cache is not None:
+            logger.debug(
+                "Using cached SEC company tickers",
+                extra={"count": len(self._tickers_cache)},
+            )
+            return self._tickers_cache
+
         logger.info("Fetching SEC company tickers")
 
         # Check if the URL is a local file (absolute or relative path)
@@ -523,6 +543,7 @@ class SECClient:
                 )
 
         logger.info("Fetched SEC companies", extra={"count": len(companies)})
+        self._tickers_cache = companies
         return companies
 
     async def get_submissions(self, cik: str) -> SECSubmissions:

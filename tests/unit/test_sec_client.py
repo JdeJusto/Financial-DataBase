@@ -258,6 +258,36 @@ class TestGetCompanyTickers:
             assert len(companies) == 0
 
     @pytest.mark.asyncio
+    async def test_get_company_tickers_memoized_per_instance(self, sec_client):
+        """The parsed tickers list is fetched at most once per client instance.
+
+        update-incremental / sync_company call get_company_tickers for every
+        company; without memoization the ~12k-company JSON is re-downloaded and
+        re-parsed each time. force_refresh=True must bypass the cache.
+        """
+        mock_data = {
+            "data": [["0000320193", "Apple Inc.", "AAPL", "NASDAQ"]]
+        }
+
+        with (
+            patch.object(sec_client, "_ensure_session"),
+            patch.object(
+                sec_client, "_request_with_retry", return_value=mock_data
+            ) as mock_request,
+        ):
+            first = await sec_client.get_company_tickers()
+            second = await sec_client.get_company_tickers()
+
+            # Only the first call touches the network layer
+            assert mock_request.call_count == 1
+            assert first is second
+            assert [c.cik for c in first] == ["0000320193"]
+
+            refreshed = await sec_client.get_company_tickers(force_refresh=True)
+            assert mock_request.call_count == 2
+            assert [c.cik for c in refreshed] == ["0000320193"]
+
+    @pytest.mark.asyncio
     async def test_get_company_tickers_malformed_items(self):
         """Test handling of malformed items in data array."""
         mock_data = {
