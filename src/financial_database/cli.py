@@ -25,7 +25,7 @@ from financial_database.providers.sec.bulk_ingest import (
     SECBulkIngestAbort,
     create_bulk_ingester,
 )
-from financial_database.providers.sec.importer import create_sec_importer
+from financial_database.providers.sec.importer import SEC_PIPELINES, create_sec_importer
 from financial_database.providers.sec.models import normalize_cik
 from financial_database.providers.price.yfinance_importer import YFinanceImporter
 
@@ -783,6 +783,11 @@ def sec_update_incremental(
         try:
             # Record the import run for audit/provenance
             provider_id = importer._get_provider_id()
+            # Flag SEC import runs left dangling in 'running' by a previous
+            # crashed/killed process before recording this fresh run.
+            importer.import_runs.mark_dangling_running(
+                str(provider_id), list(SEC_PIPELINES)
+            )
             run = importer.import_runs.create(
                 str(provider_id), "sec_update_incremental", "running"
             )

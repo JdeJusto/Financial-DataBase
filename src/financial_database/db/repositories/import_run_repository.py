@@ -93,6 +93,37 @@ class ImportRunRepository:
             )
             return [dict(row) for row in cur.fetchall()]
 
+    def mark_dangling_running(
+        self, provider_id: str, pipelines: list[str] | None = None
+    ) -> int:
+        """Close import runs still stuck in 'running' state.
+
+        A crashed or killed process leaves its import_run in 'running' forever,
+        which dashboards/health checks read as a phantom active pipeline. This
+        flags those dangling rows as 'failed' (the schema CHECK constraint only
+        permits 'running'/'success'/'failed'/'partial' — 'interrupted' would
+        require a migration, out of scope) and stamps finished_at, recording an
+        interruption note in the JSONB errors field. When ``pipelines`` is
+        given, only runs of those pipelines are closed; otherwise every running
+        run of the provider is closed. Returns the number of runs updated.
+        """
+        pipeline_filter = ""
+        params: tuple[Any, ...] = (provider_id,)
+        if pipelines:
+            pipeline_filter = " AND pipeline = ANY(%s)"
+            params += (pipelines,)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE import_runs "
+                "SET status = 'failed', "
+                "finished_at = NOW(), "
+                "duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::int, "
+                "errors = errors || '{\"reason\": \"interrupted: previous run left dangling\"}'::jsonb "
+                "WHERE provider_id = %s AND status = 'running'" + pipeline_filter,
+                params,
+            )
+            return cur.rowcount or 0
+
     def get_latest(self, provider_id: str) -> dict | None:
         """Get the latest import run for a provider."""
         with self.conn.cursor() as cur:

@@ -44,6 +44,17 @@ logger = logging.getLogger(__name__)
 SEC_PROVIDER_NAME = "SEC EDGAR"
 SEC_PROVIDER_TYPE = "sec"
 
+# Every SEC pipeline that records an import_runs row. Used to flag runs left
+# dangling in 'running' by a crashed process before a new SEC import starts.
+SEC_PIPELINES = (
+    "sec_universe",
+    "sec_submissions",
+    "sec_companyfacts",
+    "sec_sync",
+    "sec_update_incremental",
+    "sec_bulk_full_universe",
+)
+
 
 @dataclass
 class ImportStats:
@@ -719,6 +730,10 @@ class SECImporter:
     ) -> ImportStats:
         """Run a complete import pipeline with import_run tracking."""
         provider_id = self._get_provider_id()
+        # Close SEC import runs left dangling in 'running' by a previous
+        # crashed/killed process before opening a fresh run, so provenance
+        # shows exactly one active SEC pipeline.
+        self.import_runs.mark_dangling_running(str(provider_id), list(SEC_PIPELINES))
         run = self.import_runs.create(str(provider_id), pipeline_name, "running")
         run_id = str(run["id"])
         start_time = time.time()
