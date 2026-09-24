@@ -400,7 +400,23 @@ class TestSECImporterCompanyFacts:
 class TestSECImporterSyncCompany:
     """Tests for full company sync."""
 
-    # Sync company test removed - too complex to mock with current test infrastructure
+    def test_stamp_last_synced_keyed_on_normalized_cik(self, importer, mock_conn):
+        """_stamp_last_synced issues an UPDATE keyed on the normalized CIK."""
+        mock_conn.cursor = MagicMock()
+        cur = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = cur
+
+        # Unpadded CIK must be normalized to the canonical 10-digit form
+        importer._stamp_last_synced("320193")
+
+        cur.execute.assert_called_once()
+        query, params = cur.execute.call_args[0]
+        assert query.strip().upper().startswith("UPDATE COMPANIES")
+        assert params == ("0000320193",)
+
+    # Full sync_company test removed - too complex to mock with current test
+    # infrastructure; the individual components (universe, submissions,
+    # companyfacts) are tested separately.
 
 
 # The individual components (universe, submissions, companyfacts) are tested separately

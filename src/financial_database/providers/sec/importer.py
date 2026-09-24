@@ -681,8 +681,36 @@ class SECImporter:
         if include_facts:
             await self.import_company_facts(cik, stats)
 
+        # Stamp the company as freshly synced — same semantics as `sec
+        # update-incremental` (cli.py), so `sec sync <CIK>` also bumps
+        # companies.last_synced_at and freshness gates treat a manually
+        # synced company as up to date. Rendered before the commit: if any
+        # of the import steps above failed, the whole transaction (stamp
+        # included) rolls back.
+        self._stamp_last_synced(cik)
+
         self.conn.commit()
         return stats
+
+    def _stamp_last_synced(self, cik: str) -> None:
+        """Set companies.last_synced_at = NOW() for the synced company."""
+        normalized = normalize_cik(cik)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE companies
+                SET last_synced_at = NOW()
+                WHERE id = (
+                    SELECT c.id
+                    FROM companies c
+                    JOIN company_identifiers ci ON c.id = ci.company_id
+                    WHERE ci.identifier_type = 'CIK'
+                      AND ci.identifier_value = %s
+                      AND ci.provider_id = (SELECT id FROM data_providers WHERE name = 'SEC EDGAR')
+                )
+                """,
+                (normalized,),
+            )
 
     async def run_import_pipeline(
         self,
