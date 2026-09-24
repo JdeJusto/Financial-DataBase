@@ -539,22 +539,35 @@ class SECImporter:
         for fact in parsed_facts:
             fact.provider_id = str(provider_id)
 
-        # Import facts
+        # Import facts in bulk: validate each fact once, collect valid rows,
+        # and insert them in chunks via a single multi-row INSERT ... ON
+        # CONFLICT DO NOTHING per chunk. This replaces the previous per-fact
+        # existence SELECT + single-row INSERT (~2 round trips per fact, and
+        # Apple alone has tens of thousands of facts).
+        batch: list[dict] = []
         for fact in parsed_facts:
             stats.facts_processed += 1
-            try:
-                self._import_financial_fact(company_id, fact, stats)
-            except Exception as e:  # noqa: BLE001 - catch all to continue with other facts
+            errors = validate_financial_fact(fact)
+            if errors:
+                stats.facts_validation_errors += 1
                 error_info = {
                     "cik": cik,
                     "concept": fact.concept,
                     "namespace": fact.namespace,
-                    "error": str(e),
-                    "type": type(e).__name__,
+                    "error": f"Validation failed: {', '.join(errors)}",
+                    "type": "ValueError",
                 }
                 stats.errors.append(error_info)
-                stats.facts_validation_errors += 1
                 logger.error("Failed to import fact", extra=error_info)
+                continue
+
+            batch.append(self._fact_to_bulk_row(company_id, fact))
+            if len(batch) >= self._FACT_BATCH_SIZE:
+                self._insert_fact_batch(batch, cik, stats)
+                batch = []
+
+        if batch:
+            self._insert_fact_batch(batch, cik, stats)
 
         self.conn.commit()
         logger.info(
@@ -578,64 +591,63 @@ class SECImporter:
                     mapping[row["accession_number"]] = str(row["id"])
         return mapping
 
-    def _import_financial_fact(
+    # Chunk size for the multi-row financial_facts INSERT. The constraint
+    # (company_id, concept, period_start, period_end, filing_id, source_id)
+    # is UNIQUE NULLS NOT DISTINCT (migration 0019), so ON CONFLICT below
+    # deduplicates even when filing_id is NULL — idempotency is preserved.
+    _FACT_BATCH_SIZE = 1000
+
+    @staticmethod
+    def _fact_to_bulk_row(company_id: str, fact: ParsedFinancialFact) -> dict:
+        """Convert a validated ParsedFinancialFact to a financial_facts row dict."""
+        return {
+            "company_id": company_id,
+            "concept": fact.concept,
+            "namespace": fact.namespace,
+            "value": fact.value,
+            "unit": fact.unit,
+            "period_start": fact.period_start,
+            "period_end": fact.period_end,
+            "fiscal_year": fact.fiscal_year,
+            "fiscal_period": fact.fiscal_period,
+            "provider_id": fact.provider_id,
+            "source_id": fact.source_id,
+            "filing_id": fact.filing_id,
+            "form": fact.form,
+            "filing_date": fact.filing_date,
+            "frame": fact.frame,
+        }
+
+    def _insert_fact_batch(
         self,
-        company_id: str,
-        fact: ParsedFinancialFact,
+        batch: list[dict],
+        cik: str,
         stats: ImportStats,
     ) -> None:
-        """Import a single financial fact with validation."""
-        # Validate
-        errors = validate_financial_fact(fact)
-        if errors:
-            stats.facts_validation_errors += 1
-            raise ValueError(f"Validation failed: {', '.join(errors)}")
+        """Insert a chunk of validated fact rows with one multi-row statement.
 
-        # Check for existing fact (idempotency)
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """SELECT id FROM financial_facts
-                   WHERE company_id = %s AND concept = %s
-                   AND period_start IS NOT DISTINCT FROM %s
-                   AND period_end = %s
-                   AND filing_id IS NOT DISTINCT FROM %s
-                   AND source_id = %s""",
-                (
-                    company_id,
-                    fact.concept,
-                    fact.period_start,
-                    fact.period_end,
-                    fact.filing_id,
-                    fact.source_id,
-                ),
-            )
-            if cur.fetchone():
-                stats.facts_skipped += 1
-                return
-
-        # Insert fact
-        result = self.facts.create(
-            company_id=company_id,
-            concept=fact.concept,
-            value=fact.value,
-            unit=fact.unit,
-            period_start=str(fact.period_start) if fact.period_start else None,
-            period_end=str(fact.period_end),
-            fiscal_year=fact.fiscal_year,
-            fiscal_period=fact.fiscal_period,
-            provider_id=fact.provider_id,
-            source_id=fact.source_id,
-            filing_id=fact.filing_id,
-            form=fact.form,
-            filing_date=str(fact.filing_date) if fact.filing_date else None,
-            namespace=fact.namespace,
-            frame=fact.frame,
-        )
-
-        if result:
-            stats.facts_inserted += 1
-        else:
-            stats.facts_skipped += 1
+        ``ON CONFLICT DO NOTHING`` keeps the operation idempotent: rows that
+        already exist are skipped, and ``cursor.rowcount`` (returned by
+        ``create_batch_rowcount``) equals the number of rows actually inserted.
+        """
+        try:
+            inserted = self.facts.create_batch_rowcount(batch)
+        except Exception as e:  # noqa: BLE001 - catch all to continue with other companies
+            error_info = {
+                "cik": cik,
+                "concept": batch[0].get("concept"),
+                "batch_size": len(batch),
+                "error": str(e),
+                "type": type(e).__name__,
+            }
+            stats.errors.append(error_info)
+            # Truthful accounting: none of the rows in this chunk made it into
+            # the database (a multi-row statement is atomic).
+            stats.facts_skipped += len(batch)
+            logger.error("Failed to import fact batch", extra=error_info)
+            return
+        stats.facts_inserted += inserted
+        stats.facts_skipped += len(batch) - inserted
 
     async def sync_company(
         self,

@@ -62,17 +62,25 @@ class MockConnection:
         self.rolled_back = False
         self._cursor_factory = None
         self._cursor_results = []
+        self._cursor_rowcounts = []
+        self._cursor_index = 0
 
-    def set_cursor_results(self, results_list):
-        """Set up a sequence of cursor results for multiple cursor() calls."""
+    def set_cursor_results(self, results_list, rowcounts=None):
+        """Set up a sequence of cursor results for multiple cursor() calls.
+
+        ``rowcounts`` mirrors ``results_list`` and provides the value each
+        cursor reports for ``cursor.rowcount`` (used by bulk INSERT paths).
+        """
         self._cursor_results = results_list
+        self._cursor_rowcounts = rowcounts or [0] * len(results_list)
         self._cursor_index = 0
 
     def cursor(self):
         if self._cursor_index < len(self._cursor_results):
             results = self._cursor_results[self._cursor_index]
+            rowcount = self._cursor_rowcounts[self._cursor_index]
             self._cursor_index += 1
-            return MockCursor(results)
+            return MockCursor(results, rowcount=rowcount)
         return MockCursor()
 
     def commit(self):
@@ -88,10 +96,11 @@ class MockConnection:
 class MockCursor:
     """Mock cursor for testing with dict_row factory."""
 
-    def __init__(self, results=None):
+    def __init__(self, results=None, rowcount=0):
         self.results = results or []
         self.result_index = 0
         self.executed_queries = []
+        self.rowcount = rowcount
 
     def __enter__(self):
         return self
@@ -373,12 +382,12 @@ class TestSECImporterCompanyFacts:
                 [
                     {"accession_number": "000032019323000106", "id": VALID_UUID_3}
                 ],  # _build_filing_id_map
-                [None],  # financial_facts check existing - not exists
-                [{"id": VALID_UUID_3}],  # financial_facts.create
+                [],  # bulk financial_facts INSERT (no rows returned)
                 [{"id": VALID_UUID_3}],  # raw_docs.create
                 [{"id": VALID_UUID_3}],  # extra buffer
                 [{"id": VALID_UUID_3}],  # extra buffer
-            ]
+            ],
+            rowcounts=[0, 0, 0, 1, 0, 0, 0],  # bulk INSERT inserts 1 row
         )
 
         stats = ImportStats()

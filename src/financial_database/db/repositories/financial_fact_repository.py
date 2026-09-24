@@ -178,3 +178,59 @@ class FinancialFactRepository:
 
             cur.execute(query, params)
             return [dict(row) for row in cur.fetchall()]
+
+    def create_batch_rowcount(
+        self,
+        facts: list[dict],
+    ) -> int:
+        """Insert multiple financial facts in a single multi-row statement.
+
+        Unlike :meth:`create_batch`, this does not RETURN the inserted rows;
+        it returns the number of rows actually inserted. With
+        ``ON CONFLICT ... DO NOTHING`` PostgreSQL's command tag (and therefore
+        ``cursor.rowcount``) counts only rows that were really inserted, so
+        the return value is the exact inserted count while skipped conflicts
+        are ``len(facts) - rowcount``.
+
+        Each fact dict should contain all fields required by create().
+        """
+        if not facts:
+            return 0
+
+        with self.conn.cursor() as cur:
+            # Build multi-row INSERT (no RETURNING so rowcount is the command
+            # tag count = rows actually inserted, not rows returned).
+            placeholders = ", ".join(["%s"] * 15)
+            rows_placeholder = f"({placeholders})"
+            rows_placeholders = ", ".join([rows_placeholder] * len(facts))
+
+            query = f"""INSERT INTO financial_facts (company_id, concept, namespace, value, unit, period_start, period_end,
+               fiscal_year, fiscal_period, provider_id, source_id, filing_id, form, filing_date, frame)
+               VALUES {rows_placeholders}
+               ON CONFLICT (company_id, concept, period_start, period_end, filing_id, source_id) DO NOTHING"""
+
+            # Flatten facts into single parameter list
+            params = []
+            for fact in facts:
+                params.extend(
+                    [
+                        fact["company_id"],
+                        fact["concept"],
+                        fact.get("namespace"),
+                        fact["value"],
+                        fact["unit"],
+                        fact.get("period_start"),
+                        fact["period_end"],
+                        fact["fiscal_year"],
+                        fact["fiscal_period"],
+                        fact["provider_id"],
+                        fact.get("source_id"),
+                        fact.get("filing_id"),
+                        fact.get("form"),
+                        fact.get("filing_date"),
+                        fact.get("frame"),
+                    ]
+                )
+
+            cur.execute(query, params)
+            return cur.rowcount if cur.rowcount is not None else 0
