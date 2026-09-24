@@ -816,6 +816,10 @@ def sec_update_incremental(
                     [row["identifier_value"] for row in result] if result else []
                 )
 
+            # Apply the --limit option (it previously only affected dry-run)
+            if limit is not None and limit > 0:
+                stale_ciks = stale_ciks[:limit]
+
             print(
                 f"   Found {len(stale_ciks)} companies needing update (>{max_age_hours}h stale)"
             )
