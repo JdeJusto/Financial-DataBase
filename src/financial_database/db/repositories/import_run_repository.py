@@ -118,7 +118,8 @@ class ImportRunRepository:
                 "SET status = 'failed', "
                 "finished_at = NOW(), "
                 "duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::int, "
-                "errors = errors || '{\"reason\": \"interrupted: previous run left dangling\"}'::jsonb "
+                "errors = COALESCE(errors, '{}'::jsonb) "
+                '|| \'{"reason": "interrupted: previous run left dangling"}\'::jsonb '
                 "WHERE provider_id = %s AND status = 'running'" + pipeline_filter,
                 params,
             )
