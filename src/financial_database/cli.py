@@ -46,11 +46,11 @@ def migrate(database_url):
     result = run_pending()
 
     if result["success"]:
-        print("✅ Migrations completed successfully")
-        print(f"   Applied: {result['applied_count']}")
-        print(f"   Total: {result['total_applied']}")
+        print("✅ Migrations completed successfully", flush=True)
+        print(f"   Applied: {result['applied_count']}", flush=True)
+        print(f"   Total: {result['total_applied']}", flush=True)
     else:
-        print(f"❌ Migration failed: {result['error']}", file=sys.stderr)
+        print(f"❌ Migration failed: {result['error']}", file=sys.stderr, flush=True)
         sys.exit(1)
 
 
@@ -63,21 +63,21 @@ def status(database_url):
 
     result = migration_status()
 
-    print("Database Migration Status")
-    print(f"  Total migrations: {result['total']}")
-    print(f"  Applied: {result['applied']}")
-    print(f"  Pending: {result['pending']}")
-    print()
+    print("Database Migration Status", flush=True)
+    print(f"  Total migrations: {result['total']}", flush=True)
+    print(f"  Applied: {result['applied']}", flush=True)
+    print(f"  Pending: {result['pending']}", flush=True)
+    print(flush=True)
 
     if result["applied_names"]:
-        print("  Applied:")
+        print("  Applied:", flush=True)
         for name in result["applied_names"]:
-            print(f"    - {name}")
+            print(f"    - {name}", flush=True)
 
     if result["pending_names"]:
-        print("  Pending:")
+        print("  Pending:", flush=True)
         for name in result["pending_names"]:
-            print(f"    - {name}")
+            print(f"    - {name}", flush=True)
 
 
 @cli.group()
@@ -126,12 +126,12 @@ def seed_provider(database_url):
             )
             row = cur.fetchone()
             if row:
-                print(f"✅ Created SEC provider: {row['id']}")
+                print(f"✅ Created SEC provider: {row['id']}", flush=True)
             else:
                 cur.execute("SELECT id FROM data_providers WHERE name = 'SEC EDGAR'")
                 row = cur.fetchone()
                 if row:
-                    print(f"✅ SEC provider already exists: {row['id']}")
+                    print(f"✅ SEC provider already exists: {row['id']}", flush=True)
         conn.commit()
     finally:
         conn.close()
@@ -160,7 +160,7 @@ def seed_exchanges(database_url):
             if result:
                 inserted += 1
         conn.commit()
-        print(f"✅ Seeded {inserted} exchanges")
+        print(f"✅ Seeded {inserted} exchanges", flush=True)
     finally:
         conn.close()
 
@@ -176,17 +176,18 @@ def sec_universe(database_url, dry_run):
     raw_dir = _get_raw_dir()
 
     if dry_run:
-        print("🔍 Dry run - fetching SEC company universe...")
+        print("🔍 Dry run - fetching SEC company universe...", flush=True)
         client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
         try:
             companies = asyncio.run(client.get_company_tickers())
-            print(f"   Would import {len(companies)} companies")
+            print(f"   Would import {len(companies)} companies", flush=True)
             for c in companies[:5]:
                 print(
-                    f"   - {c.cik}: {c.name} ({c.ticker or 'no ticker'}) on {c.exchange or 'no exchange'}"
+                    f"   - {c.cik}: {c.name} ({c.ticker or 'no ticker'}) on {c.exchange or 'no exchange'}",
+                    flush=True,
                 )
             if len(companies) > 5:
-                print(f"   ... and {len(companies) - 5} more")
+                print(f"   ... and {len(companies) - 5} more", flush=True)
         finally:
             asyncio.run(client.close())
         return
@@ -196,21 +197,21 @@ def sec_universe(database_url, dry_run):
     importer = SECImporter(conn, client)
 
     try:
-        print("🌱 Seeding SEC provider and exchanges...")
+        print("🌱 Seeding SEC provider and exchanges...", flush=True)
         asyncio.run(importer.seed_exchanges())
 
-        print("📥 Importing SEC company universe...")
+        print("📥 Importing SEC company universe...", flush=True)
         stats = asyncio.run(importer.run_import_pipeline("sec_universe"))
 
-        print("✅ Import complete:")
-        print(f"   Companies processed: {stats.companies_processed}")
-        print(f"   Companies inserted: {stats.companies_inserted}")
-        print(f"   Companies updated: {stats.companies_updated}")
-        print(f"   Identifiers inserted: {stats.identifiers_inserted}")
-        print(f"   Listings inserted: {stats.listings_inserted}")
-        print(f"   Exchanges inserted: {stats.exchanges_inserted}")
+        print("✅ Import complete:", flush=True)
+        print(f"   Companies processed: {stats.companies_processed}", flush=True)
+        print(f"   Companies inserted: {stats.companies_inserted}", flush=True)
+        print(f"   Companies updated: {stats.companies_updated}", flush=True)
+        print(f"   Identifiers inserted: {stats.identifiers_inserted}", flush=True)
+        print(f"   Listings inserted: {stats.listings_inserted}", flush=True)
+        print(f"   Exchanges inserted: {stats.exchanges_inserted}", flush=True)
         if stats.errors:
-            print(f"   Errors: {len(stats.errors)}")
+            print(f"   Errors: {len(stats.errors)}", flush=True)
     finally:
         conn.close()
         asyncio.run(client.close())
@@ -235,17 +236,18 @@ def sec_submissions(cik, database_url, dry_run):
     raw_dir = _get_raw_dir()
 
     if dry_run:
-        print(f"🔍 Dry run - fetching submissions for CIK {cik}...")
+        print(f"🔍 Dry run - fetching submissions for CIK {cik}...", flush=True)
         client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
         try:
             submissions = asyncio.run(client.get_submissions(cik))
-            print(f"   Found {len(submissions.filings)} filings")
+            print(f"   Found {len(submissions.filings)} filings", flush=True)
             for f in submissions.filings[:10]:
                 print(
-                    f"   - {f.form} {f.accession_number} filed {f.filing_date} period {f.period_end}"
+                    f"   - {f.form} {f.accession_number} filed {f.filing_date} period {f.period_end}",
+                    flush=True,
                 )
             if len(submissions.filings) > 10:
-                print(f"   ... and {len(submissions.filings) - 10} more")
+                print(f"   ... and {len(submissions.filings) - 10} more", flush=True)
         finally:
             asyncio.run(client.close())
         return
@@ -255,15 +257,15 @@ def sec_submissions(cik, database_url, dry_run):
     importer = SECImporter(conn, client)
 
     try:
-        print(f"📥 Importing submissions for CIK {cik}...")
+        print(f"📥 Importing submissions for CIK {cik}...", flush=True)
         stats = asyncio.run(importer.run_import_pipeline("sec_submissions", cik=cik))
 
-        print("✅ Import complete:")
-        print(f"   Filings processed: {stats.filings_processed}")
-        print(f"   Filings inserted: {stats.filings_inserted}")
-        print(f"   Filings skipped: {stats.filings_skipped}")
+        print("✅ Import complete:", flush=True)
+        print(f"   Filings processed: {stats.filings_processed}", flush=True)
+        print(f"   Filings inserted: {stats.filings_inserted}", flush=True)
+        print(f"   Filings skipped: {stats.filings_skipped}", flush=True)
         if stats.errors:
-            print(f"   Errors: {len(stats.errors)}")
+            print(f"   Errors: {len(stats.errors)}", flush=True)
     finally:
         conn.close()
         asyncio.run(client.close())
@@ -288,21 +290,25 @@ def sec_companyfacts(cik, database_url, dry_run):
     raw_dir = _get_raw_dir()
 
     if dry_run:
-        print(f"🔍 Dry run - fetching CompanyFacts for CIK {cik}...")
+        print(f"🔍 Dry run - fetching CompanyFacts for CIK {cik}...", flush=True)
         client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
         try:
             facts = asyncio.run(client.get_company_facts(cik))
             total_values = sum(
                 len(fact.values) for ns in facts.facts.values() for fact in ns.values()
             )
-            print(f"   Namespaces: {len(facts.facts)}")
-            print(f"   Concepts: {sum(len(ns) for ns in facts.facts.values())}")
-            print(f"   Total fact values: {total_values}")
+            print(f"   Namespaces: {len(facts.facts)}", flush=True)
+            print(
+                f"   Concepts: {sum(len(ns) for ns in facts.facts.values())}",
+                flush=True,
+            )
+            print(f"   Total fact values: {total_values}", flush=True)
             # Show sample
             for ns, concepts in list(facts.facts.items())[:3]:
                 for concept_name, fact in list(concepts.items())[:3]:
                     print(
-                        f"   - {ns}:{concept_name} ({fact.unit}) - {len(fact.values)} values"
+                        f"   - {ns}:{concept_name} ({fact.unit}) - {len(fact.values)} values",
+                        flush=True,
                     )
         finally:
             asyncio.run(client.close())
@@ -313,16 +319,16 @@ def sec_companyfacts(cik, database_url, dry_run):
     importer = SECImporter(conn, client)
 
     try:
-        print(f"📥 Importing CompanyFacts for CIK {cik}...")
+        print(f"📥 Importing CompanyFacts for CIK {cik}...", flush=True)
         stats = asyncio.run(importer.run_import_pipeline("sec_companyfacts", cik=cik))
 
-        print("✅ Import complete:")
-        print(f"   Facts processed: {stats.facts_processed}")
-        print(f"   Facts inserted: {stats.facts_inserted}")
-        print(f"   Facts skipped: {stats.facts_skipped}")
-        print(f"   Validation errors: {stats.facts_validation_errors}")
+        print("✅ Import complete:", flush=True)
+        print(f"   Facts processed: {stats.facts_processed}", flush=True)
+        print(f"   Facts inserted: {stats.facts_inserted}", flush=True)
+        print(f"   Facts skipped: {stats.facts_skipped}", flush=True)
+        print(f"   Validation errors: {stats.facts_validation_errors}", flush=True)
         if stats.errors:
-            print(f"   Errors: {len(stats.errors)}")
+            print(f"   Errors: {len(stats.errors)}", flush=True)
     finally:
         conn.close()
         asyncio.run(client.close())
@@ -349,7 +355,7 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
     raw_dir = _get_raw_dir()
 
     if dry_run:
-        print(f"🔍 Dry run - would sync CIK {cik}")
+        print(f"🔍 Dry run - would sync CIK {cik}", flush=True)
         client = SECClient(user_agent=user_agent, raw_dir=raw_dir)
         try:
             # Just verify company exists in universe
@@ -359,10 +365,11 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
             )
             if target:
                 print(
-                    f"   Found in universe: {target.name} ({target.ticker}) on {target.exchange}"
+                    f"   Found in universe: {target.name} ({target.ticker}) on {target.exchange}",
+                    flush=True,
                 )
             else:
-                print(f"   ⚠️  CIK {cik} not found in SEC universe")
+                print(f"   ⚠️  CIK {cik} not found in SEC universe", flush=True)
         finally:
             asyncio.run(client.close())
         return
@@ -372,7 +379,7 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
     importer = SECImporter(conn, client)
 
     try:
-        print(f"🔄 Full sync for CIK {cik}...")
+        print(f"🔄 Full sync for CIK {cik}...", flush=True)
         pipeline = "sec_sync"
         if no_facts and no_filings:
             pipeline = "sec_universe"
@@ -388,22 +395,26 @@ def sec_sync(cik, database_url, no_facts, no_filings, dry_run):
             )
         )
 
-        print("✅ Sync complete:")
+        print("✅ Sync complete:", flush=True)
         print(
-            f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated"
+            f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated",
+            flush=True,
         )
-        print(f"   Identifiers: {stats.identifiers_inserted} inserted")
+        print(f"   Identifiers: {stats.identifiers_inserted} inserted", flush=True)
         print(
-            f"   Listings: {stats.listings_inserted} inserted, {stats.listings_updated} updated"
+            f"   Listings: {stats.listings_inserted} inserted, {stats.listings_updated} updated",
+            flush=True,
         )
         print(
-            f"   Filings: {stats.filings_inserted} inserted, {stats.filings_skipped} skipped"
+            f"   Filings: {stats.filings_inserted} inserted, {stats.filings_skipped} skipped",
+            flush=True,
         )
         print(
-            f"   Facts: {stats.facts_inserted} inserted, {stats.facts_skipped} skipped, {stats.facts_validation_errors} validation errors"
+            f"   Facts: {stats.facts_inserted} inserted, {stats.facts_skipped} skipped, {stats.facts_validation_errors} validation errors",
+            flush=True,
         )
         if stats.errors:
-            print(f"   Errors: {len(stats.errors)}")
+            print(f"   Errors: {len(stats.errors)}", flush=True)
     finally:
         conn.close()
         asyncio.run(client.close())
@@ -442,13 +453,14 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
 
     try:
         if not skip_universe:
-            print("🌱 Seeding SEC provider and exchanges...")
+            print("🌱 Seeding SEC provider and exchanges...", flush=True)
             asyncio.run(importer.seed_exchanges())
 
-            print("📥 Importing SEC company universe...")
+            print("📥 Importing SEC company universe...", flush=True)
             stats = asyncio.run(importer.import_company_universe())
             print(
-                f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated"
+                f"   Companies: {stats.companies_inserted} inserted, {stats.companies_updated} updated",
+                flush=True,
             )
 
         # Get all companies from database
@@ -465,11 +477,11 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
         if limit:
             ciks = ciks[:limit]
 
-        print(f"🔄 Syncing {len(ciks)} companies...")
+        print(f"🔄 Syncing {len(ciks)} companies...", flush=True)
         total_stats = ImportStats()
 
         for i, cik in enumerate(ciks, 1):
-            print(f"   [{i}/{len(ciks)}] CIK {cik}...")
+            print(f"   [{i}/{len(ciks)}] CIK {cik}...", flush=True)
             try:
                 stats = asyncio.run(importer.sync_company(cik))
                 total_stats.companies_processed += stats.companies_processed
@@ -479,14 +491,14 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
                 total_stats.facts_inserted += stats.facts_inserted
                 total_stats.errors.extend(stats.errors)
             except Exception as e:  # noqa: BLE001 - catch all to continue with other companies
-                print(f"      ❌ Failed: {e}")
+                print(f"      ❌ Failed: {e}", flush=True)
                 total_stats.errors.append({"cik": cik, "error": str(e)})
 
-        print("✅ Full sync complete:")
-        print(f"   Companies processed: {total_stats.companies_processed}")
-        print(f"   Filings inserted: {total_stats.filings_inserted}")
-        print(f"   Facts inserted: {total_stats.facts_inserted}")
-        print(f"   Total errors: {len(total_stats.errors)}")
+        print("✅ Full sync complete:", flush=True)
+        print(f"   Companies processed: {total_stats.companies_processed}", flush=True)
+        print(f"   Filings inserted: {total_stats.filings_inserted}", flush=True)
+        print(f"   Facts inserted: {total_stats.facts_inserted}", flush=True)
+        print(f"   Total errors: {len(total_stats.errors)}", flush=True)
     finally:
         conn.close()
         asyncio.run(client.close())
@@ -553,13 +565,14 @@ def sec_bulk_ingest(
         )
 
     if dry_run:
-        print("🔍 Dry run - validating bulk ingestion setup...")
+        print("🔍 Dry run - validating bulk ingestion setup...", flush=True)
         print(
-            f"   Checkpoint file: {checkpoint_file or 'default (./data/checkpoints/sec_bulk/full_universe_checkpoint.json)'}"
+            f"   Checkpoint file: {checkpoint_file or 'default (./data/checkpoints/sec_bulk/full_universe_checkpoint.json)'}",
+            flush=True,
         )
-        print(f"   Limit: {limit or 'none (all companies)'}")
-        print(f"   Download: {'yes' if download else 'no'}")
-        print(f"   Force (ignore checkpoint): {'yes' if force else 'no'}")
+        print(f"   Limit: {limit or 'none (all companies)'}", flush=True)
+        print(f"   Download: {'yes' if download else 'no'}", flush=True)
+        print(f"   Force (ignore checkpoint): {'yes' if force else 'no'}", flush=True)
 
         from financial_database.providers.sec import SECClient
 
@@ -571,10 +584,13 @@ def sec_bulk_ingest(
             total = len(companies)
             if limit and limit > 0:
                 companies = companies[:limit]
-            print(f"   Companies loaded: {len(companies)} (of {total} total)")
+            print(
+                f"   Companies loaded: {len(companies)} (of {total} total)", flush=True
+            )
             for c in companies[:5]:
                 print(
-                    f"   - {c.cik}: {c.name} ({c.ticker or 'no ticker'}) on {c.exchange or 'no exchange'}"
+                    f"   - {c.cik}: {c.name} ({c.ticker or 'no ticker'}) on {c.exchange or 'no exchange'}",
+                    flush=True,
                 )
         finally:
             asyncio.run(client.close())
@@ -591,7 +607,7 @@ def sec_bulk_ingest(
     start_time = time.time()
 
     # Create bulk ingester
-    print("🔧 Initializing bulk ingester...")
+    print("🔧 Initializing bulk ingester...", flush=True)
     ingester, client = asyncio.run(
         create_bulk_ingester(
             database_url=database_url,
@@ -604,15 +620,21 @@ def sec_bulk_ingest(
     # Load checkpoint if provided (skipped when --force is set)
     checkpoint = None
     if checkpoint_file and Path(checkpoint_file).exists() and not force:
-        print(f"📌 Loading checkpoint from {checkpoint_file}")
+        print(f"📌 Loading checkpoint from {checkpoint_file}", flush=True)
         with open(checkpoint_file) as f:
             data = json.load(f)
         checkpoint = BulkImportCheckpoint.from_dict(data)
-        print(f"   Resuming from CIK: {checkpoint.last_processed_cik or 'beginning'}")
-        print(f"   Companies processed so far: {checkpoint.companies_processed}")
+        print(
+            f"   Resuming from CIK: {checkpoint.last_processed_cik or 'beginning'}",
+            flush=True,
+        )
+        print(
+            f"   Companies processed so far: {checkpoint.companies_processed}",
+            flush=True,
+        )
 
     if force:
-        print("🔄 Force flag set: ignoring previous checkpoint progress")
+        print("🔄 Force flag set: ignoring previous checkpoint progress", flush=True)
 
     async def run_with_signals():
         # Install signal handlers for graceful shutdown
@@ -630,38 +652,43 @@ def sec_bulk_ingest(
 
         elapsed = time.time() - start_time
 
-        print("\n✅ Bulk ingestion complete:")
-        print(f"   Companies processed: {stats.companies_processed}")
-        print(f"   Companies inserted: {stats.companies_inserted}")
-        print(f"   Companies updated: {stats.companies_updated}")
-        print(f"   Identifiers inserted: {stats.identifiers_inserted}")
-        print(f"   Filings processed: {stats.filings_processed}")
-        print(f"   Filings inserted: {stats.filings_inserted}")
-        print(f"   Filings skipped: {stats.filings_skipped}")
-        print(f"   Facts processed: {stats.facts_processed}")
-        print(f"   Facts inserted: {stats.facts_inserted}")
-        print(f"   Facts skipped: {stats.facts_skipped}")
-        print(f"   Facts validation errors: {stats.facts_validation_errors}")
-        print(f"   Errors encountered: {len(stats.errors)}")
-        print(f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)")
+        print("\n✅ Bulk ingestion complete:", flush=True)
+        print(f"   Companies processed: {stats.companies_processed}", flush=True)
+        print(f"   Companies inserted: {stats.companies_inserted}", flush=True)
+        print(f"   Companies updated: {stats.companies_updated}", flush=True)
+        print(f"   Identifiers inserted: {stats.identifiers_inserted}", flush=True)
+        print(f"   Filings processed: {stats.filings_processed}", flush=True)
+        print(f"   Filings inserted: {stats.filings_inserted}", flush=True)
+        print(f"   Filings skipped: {stats.filings_skipped}", flush=True)
+        print(f"   Facts processed: {stats.facts_processed}", flush=True)
+        print(f"   Facts inserted: {stats.facts_inserted}", flush=True)
+        print(f"   Facts skipped: {stats.facts_skipped}", flush=True)
+        print(
+            f"   Facts validation errors: {stats.facts_validation_errors}", flush=True
+        )
+        print(f"   Errors encountered: {len(stats.errors)}", flush=True)
+        print(f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)", flush=True)
 
         if stats.errors:
-            print("\n⚠️  Errors (first 5):")
+            print("\n⚠️  Errors (first 5):", flush=True)
             for err in stats.errors[:5]:
-                print(f"   - {err}")
+                print(f"   - {err}", flush=True)
 
     except (OSError, psycopg.Error, RuntimeError, ValueError) as e:
         ingester.mark_import_run_failed(str(e))
-        print(f"�⚠ Bulk ingestion failed: {e}", file=sys.stderr)
+        print(f"�⚠ Bulk ingestion failed: {e}", file=sys.stderr, flush=True)
         logging.getLogger(__name__).exception("Bulk ingestion failed")
         sys.exit(1)
     except SECBulkIngestAbort as e:
         ingester.mark_import_run_failed(str(e))
-        print(f"❌ Bulk ingestion aborted: {e}", file=sys.stderr)
-        print("   Checkpoint saved; resume later with the same command.")
+        print(f"❌ Bulk ingestion aborted: {e}", file=sys.stderr, flush=True)
+        print("   Checkpoint saved; resume later with the same command.", flush=True)
         sys.exit(1)
     except asyncio.CancelledError:
-        print("\n⚠️  Ingestion interrupted by signal, checkpoint saved for resume")
+        print(
+            "\n⚠️  Ingestion interrupted by signal, checkpoint saved for resume",
+            flush=True,
+        )
         sys.exit(130)
     finally:
         asyncio.run(client.close())
@@ -714,11 +741,11 @@ def sec_update_incremental(
         logging.basicConfig(level=logging.INFO)
 
     if dry_run:
-        print("🔍 Dry run - validating incremental update setup...")
-        print(f"   Max age: {max_age_hours} hours")
-        print(f"   Batch size: {batch_size}")
+        print("🔍 Dry run - validating incremental update setup...", flush=True)
+        print(f"   Max age: {max_age_hours} hours", flush=True)
+        print(f"   Batch size: {batch_size}", flush=True)
         if limit is not None and limit > 0:
-            print(f"   Limit: {limit} (will be applied to processing)")
+            print(f"   Limit: {limit} (will be applied to processing)", flush=True)
 
         from financial_database.providers.sec import SECClient
 
@@ -730,7 +757,8 @@ def sec_update_incremental(
             if limit is not None and limit > 0:
                 companies = companies[:limit]
             print(
-                f"   Companies in SEC universe: {len(companies)}{' (limited)' if limit is not None and limit > 0 else ''}"
+                f"   Companies in SEC universe: {len(companies)}{' (limited)' if limit is not None and limit > 0 else ''}",
+                flush=True,
             )
             # Check how many would be considered stale
             conn = _get_db_connection(database_url)
@@ -749,10 +777,14 @@ def sec_update_incremental(
                     )
                     result = cur.fetchone()
                     stale_count = result["count"] if result else 0
-                    print(f"   Stale companies (>{max_age_hours}h): {stale_count}")
+                    print(
+                        f"   Stale companies (>{max_age_hours}h): {stale_count}",
+                        flush=True,
+                    )
                     if limit is not None and limit > 0:
                         print(
-                            f"   Note: --limit {limit} will be applied to the list of stale companies for processing."
+                            f"   Note: --limit {limit} will be applied to the list of stale companies for processing.",
+                            flush=True,
                         )
             finally:
                 conn.close()
@@ -773,7 +805,7 @@ def sec_update_incremental(
         start_time = time.time()
 
         # Create importer
-        print("🔧 Initializing incremental updater...")
+        print("🔧 Initializing incremental updater...", flush=True)
         importer, client = create_sec_importer(
             database_url=effective_database_url,
             user_agent=user_agent,
@@ -794,13 +826,15 @@ def sec_update_incremental(
             run_id = str(run["id"])
             run_start_time = time.time()
 
-            print("📥 Fetching latest company universe from SEC...")
+            print("📥 Fetching latest company universe from SEC...", flush=True)
             sec_companies = await client.get_company_tickers()
             sec_company_dict = {normalize_cik(c.cik): c for c in sec_companies}
-            print(f"   Found {len(sec_companies)} companies in SEC universe")
+            print(
+                f"   Found {len(sec_companies)} companies in SEC universe", flush=True
+            )
 
             # Get companies from database that need updating
-            print("🔍 Identifying stale companies...")
+            print("🔍 Identifying stale companies...", flush=True)
             conn = importer.conn  # Reuse the connection from importer
             stale_ciks = []
 
@@ -826,11 +860,12 @@ def sec_update_incremental(
                 stale_ciks = stale_ciks[:limit]
 
             print(
-                f"   Found {len(stale_ciks)} companies needing update (>{max_age_hours}h stale)"
+                f"   Found {len(stale_ciks)} companies needing update (>{max_age_hours}h stale)",
+                flush=True,
             )
 
             if not stale_ciks:
-                print("✅ No companies need updating - all data is fresh!")
+                print("✅ No companies need updating - all data is fresh!", flush=True)
                 # Still mark the import run as successful
                 importer.import_runs.update(
                     run_id,
@@ -854,7 +889,8 @@ def sec_update_incremental(
                 total_batches = (len(stale_ciks) + batch_size - 1) // batch_size
 
                 print(
-                    f"📦 Processing batch {batch_num}/{total_batches} ({len(batch)} companies)..."
+                    f"📦 Processing batch {batch_num}/{total_batches} ({len(batch)} companies)...",
+                    flush=True,
                 )
 
                 batch_stats = ImportStats()
@@ -948,7 +984,8 @@ def sec_update_incremental(
                 total_stats.errors.extend(batch_stats.errors)
 
                 print(
-                    f"   ✅ Batch {batch_num} complete: {batch_stats.companies_processed} companies processed"
+                    f"   ✅ Batch {batch_num} complete: {batch_stats.companies_processed} companies processed",
+                    flush=True,
                 )
 
             # Finalize import run
@@ -978,25 +1015,37 @@ def sec_update_incremental(
             )
 
             elapsed = time.time() - start_time
-            print("\n✅ Incremental update complete:")
-            print(f"   Companies processed: {total_stats.companies_processed}")
-            print(f"   Companies inserted: {total_stats.companies_inserted}")
-            print(f"   Companies updated: {total_stats.companies_updated}")
-            print(f"   Identifiers inserted: {total_stats.identifiers_inserted}")
-            print(f"   Filings processed: {total_stats.filings_processed}")
-            print(f"   Filings inserted: {total_stats.filings_inserted}")
-            print(f"   Filings skipped: {total_stats.filings_skipped}")
-            print(f"   Facts processed: {total_stats.facts_processed}")
-            print(f"   Facts inserted: {total_stats.facts_inserted}")
-            print(f"   Facts skipped: {total_stats.facts_skipped}")
-            print(f"   Facts validation errors: {total_stats.facts_validation_errors}")
-            print(f"   Errors encountered: {len(total_stats.errors)}")
-            print(f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)")
+            print("\n✅ Incremental update complete:", flush=True)
+            print(
+                f"   Companies processed: {total_stats.companies_processed}", flush=True
+            )
+            print(
+                f"   Companies inserted: {total_stats.companies_inserted}", flush=True
+            )
+            print(f"   Companies updated: {total_stats.companies_updated}", flush=True)
+            print(
+                f"   Identifiers inserted: {total_stats.identifiers_inserted}",
+                flush=True,
+            )
+            print(f"   Filings processed: {total_stats.filings_processed}", flush=True)
+            print(f"   Filings inserted: {total_stats.filings_inserted}", flush=True)
+            print(f"   Filings skipped: {total_stats.filings_skipped}", flush=True)
+            print(f"   Facts processed: {total_stats.facts_processed}", flush=True)
+            print(f"   Facts inserted: {total_stats.facts_inserted}", flush=True)
+            print(f"   Facts skipped: {total_stats.facts_skipped}", flush=True)
+            print(
+                f"   Facts validation errors: {total_stats.facts_validation_errors}",
+                flush=True,
+            )
+            print(f"   Errors encountered: {len(total_stats.errors)}", flush=True)
+            print(
+                f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)", flush=True
+            )
 
             if total_stats.errors:
-                print("\n⚠️  Errors (first 5):")
+                print("\n⚠️  Errors (first 5):", flush=True)
                 for err in total_stats.errors[:5]:
-                    print(f"   - {err}")
+                    print(f"   - {err}", flush=True)
 
         except Exception as e:
             # Mark the import run as failed
@@ -1013,7 +1062,7 @@ def sec_update_incremental(
                     duration_seconds=int(time.time() - run_start_time),
                 )
 
-            print(f"❌ Incremental update failed: {e}", file=sys.stderr)
+            print(f"❌ Incremental update failed: {e}", file=sys.stderr, flush=True)
             logging.getLogger(__name__).exception("Incremental update failed")
             sys.exit(1)
         finally:
@@ -1056,8 +1105,8 @@ def prices_update(
         logging.basicConfig(level=logging.INFO)
 
     if dry_run:
-        print("🔍 Dry run - validating price update setup...")
-        print(f"   Limit: {limit or 'none (all listings)'}")
+        print("🔍 Dry run - validating price update setup...", flush=True)
+        print(f"   Limit: {limit or 'none (all listings)'}", flush=True)
         # We could do a quick check here, but for simplicity we just show the config.
         return
 
@@ -1071,7 +1120,7 @@ def prices_update(
         start_time = time.time()
 
         # Create importer
-        print("🔧 Initializing price updater...")
+        print("🔧 Initializing price updater...", flush=True)
         importer = YFinanceImporter(database_url=effective_database_url)
 
         try:
@@ -1095,7 +1144,7 @@ def prices_update(
             run_id = str(run["id"])
             run_start_time = time.time()
 
-            print("📥 Fetching latest prices from Yahoo Finance...")
+            print("📥 Fetching latest prices from Yahoo Finance...", flush=True)
             stats = await importer.run(limit=limit)
 
             # Finalize import run
@@ -1120,18 +1169,20 @@ def prices_update(
             )
 
             elapsed = time.time() - start_time
-            print("\n✅ Price update complete:")
-            print(f"   Listings processed: {stats.records_processed}")
-            print(f"   Prices inserted: {stats.records_inserted}")
-            print(f"   Prices updated: {stats.records_updated}")
-            print(f"   Prices skipped: {stats.records_skipped}")
-            print(f"   Errors encountered: {len(stats.errors)}")
-            print(f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)")
+            print("\n✅ Price update complete:", flush=True)
+            print(f"   Listings processed: {stats.records_processed}", flush=True)
+            print(f"   Prices inserted: {stats.records_inserted}", flush=True)
+            print(f"   Prices updated: {stats.records_updated}", flush=True)
+            print(f"   Prices skipped: {stats.records_skipped}", flush=True)
+            print(f"   Errors encountered: {len(stats.errors)}", flush=True)
+            print(
+                f"   Elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f}min)", flush=True
+            )
 
             if stats.errors:
-                print("\n⚠️  Errors (first 5):")
+                print("\n⚠️  Errors (first 5):", flush=True)
                 for err in stats.errors[:5]:
-                    print(f"   - {err}")
+                    print(f"   - {err}", flush=True)
 
         except Exception as e:
             # Mark the import run as failed
@@ -1148,7 +1199,7 @@ def prices_update(
                     duration_seconds=int(time.time() - run_start_time),
                 )
 
-            print(f"❌ Price update failed: {e}", file=sys.stderr)
+            print(f"❌ Price update failed: {e}", file=sys.stderr, flush=True)
             logging.getLogger(__name__).exception("Price update failed")
             sys.exit(1)
 
@@ -1207,18 +1258,18 @@ def update_all(
         logging.basicConfig(level=logging.INFO)
 
     if dry_run:
-        print("🔍 Dry run - validating update-all setup...")
-        print(f"   SEC max age: {sec_max_age_hours} hours")
-        print(f"   SEC batch size: {sec_batch_size}")
+        print("🔍 Dry run - validating update-all setup...", flush=True)
+        print(f"   SEC max age: {sec_max_age_hours} hours", flush=True)
+        print(f"   SEC batch size: {sec_batch_size}", flush=True)
         if sec_limit is not None and sec_limit > 0:
-            print(f"   SEC limit: {sec_limit}")
+            print(f"   SEC limit: {sec_limit}", flush=True)
         if price_limit is not None and price_limit > 0:
-            print(f"   Price limit: {price_limit}")
+            print(f"   Price limit: {price_limit}", flush=True)
         # We could do a quick check here, but for simplicity we just show the config.
         return
 
     # Run SEC incremental update
-    print("🚀 Starting SEC incremental update...")
+    print("🚀 Starting SEC incremental update...", flush=True)
     # We'll reuse the same logic from sec_update_incremental by calling its callback via subprocess
     # to avoid code duplication while keeping the implementation simple
     sec_cmd = [
@@ -1242,17 +1293,23 @@ def update_all(
     try:
         result = subprocess.run(sec_cmd, check=True, capture_output=False, text=True)
         if result.returncode != 0:
-            print(f"❌ SEC incremental update failed with return code {result.returncode}")
+            print(
+                f"❌ SEC incremental update failed with return code {result.returncode}",
+                flush=True,
+            )
             sys.exit(result.returncode)
     except subprocess.CalledProcessError as e:
-        print(f"❌ SEC incremental update failed: {e}")
+        print(f"❌ SEC incremental update failed: {e}", flush=True)
         sys.exit(e.returncode)
     except FileNotFoundError:
-        print("❌ Could not find financial_database.cli module. Make sure the package is installed correctly.")
+        print(
+            "❌ Could not find financial_database.cli module. Make sure the package is installed correctly.",
+            flush=True,
+        )
         sys.exit(1)
 
     # Run price update
-    print("\n🚀 Starting price update...")
+    print("\n🚀 Starting price update...", flush=True)
     price_cmd = [
         sys.executable,
         "-m",
@@ -1272,16 +1329,22 @@ def update_all(
     try:
         result = subprocess.run(price_cmd, check=True, capture_output=False, text=True)
         if result.returncode != 0:
-            print(f"❌ Price update failed with return code {result.returncode}")
+            print(
+                f"❌ Price update failed with return code {result.returncode}",
+                flush=True,
+            )
             sys.exit(result.returncode)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Price update failed: {e}")
+        print(f"❌ Price update failed: {e}", flush=True)
         sys.exit(e.returncode)
     except FileNotFoundError:
-        print("❌ Could not find financial_database.cli module. Make sure the package is installed correctly.")
+        print(
+            "❌ Could not find financial_database.cli module. Make sure the package is installed correctly.",
+            flush=True,
+        )
         sys.exit(1)
 
-    print("\n✅ All updates completed successfully!")
+    print("\n✅ All updates completed successfully!", flush=True)
 
 
 if __name__ == "__main__":
