@@ -106,6 +106,10 @@ class ImportRunRepository:
         interruption note in the JSONB errors field. When ``pipelines`` is
         given, only runs of those pipelines are closed; otherwise every running
         run of the provider is closed. Returns the number of runs updated.
+
+        This is the *pre-run* hook: it reconciles immediately, before a new run
+        of the same pipelines starts. For age-based cleanup of any pipeline
+        (``prices_update`` included) use :meth:`close_dangling_runs`.
         """
         pipeline_filter = ""
         params: tuple[Any, ...] = (provider_id,)
@@ -124,6 +128,53 @@ class ImportRunRepository:
                 params,
             )
             return cur.rowcount or 0
+
+    def close_dangling_runs(
+        self,
+        max_age_hours: float = 6.0,
+        pipelines: list[str] | None = None,
+    ) -> list[dict]:
+        """Close import runs stuck in 'running' for longer than ``max_age_hours``.
+
+        Age-based maintenance cleanup for **any** pipeline (``prices_update``
+        included, not just the SEC ones): a killed or crashed process never
+        gets to close its own row, and a phantom 'running' run misleads
+        dashboards, health checks and freshness queries. Rows younger than the
+        threshold are left alone so a legitimately long run is never killed.
+
+        Existing error context is preserved (the reason is merged into the
+        JSONB ``errors`` column, never overwritten) and the previous age is
+        recorded with it, so the closure is auditable.
+
+        Returns the closed rows (``id``, ``pipeline``, ``started_at``,
+        ``age_hours``) for logging.
+        """
+        params: tuple[Any, ...] = (max_age_hours,)
+        pipeline_filter = ""
+        if pipelines:
+            pipeline_filter = " AND pipeline = ANY(%s)"
+            params += (pipelines,)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE import_runs "
+                "SET status = 'failed', "
+                "finished_at = NOW(), "
+                "duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::int, "
+                "errors = COALESCE(errors, '{}'::jsonb) || jsonb_build_object("
+                "'reason', 'stale_running_closed_by_maintenance', "
+                "'previous_status', 'running', "
+                "'age_hours', ROUND("
+                "(EXTRACT(EPOCH FROM (NOW() - started_at)) / 3600)::numeric, 2)"
+                ") "
+                "WHERE status = 'running' "
+                "AND started_at < NOW() - (%s * interval '1 hour')"
+                + pipeline_filter
+                + " RETURNING id, pipeline, started_at, ROUND("
+                "(EXTRACT(EPOCH FROM (NOW() - started_at)) / 3600)::numeric, 2)"
+                " AS age_hours",
+                params,
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     def get_latest(self, provider_id: str) -> dict | None:
         """Get the latest import run for a provider."""

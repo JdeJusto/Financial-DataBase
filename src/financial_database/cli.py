@@ -1077,6 +1077,73 @@ from financial_database.providers.sec import ImportStats
 
 
 @cli.group()
+def maintenance():
+    """Provenance/bookkeeping maintenance commands."""
+
+
+@maintenance.command("close-dangling-runs")
+@click.option("--database-url", default=None, help="PostgreSQL connection URL")
+@click.option(
+    "--max-age-hours",
+    type=float,
+    default=6.0,
+    show_default=True,
+    help="Close 'running' import runs older than this (default: 6 hours)",
+)
+@click.option(
+    "--pipeline",
+    "pipelines",
+    multiple=True,
+    help="Only close these pipelines (repeatable; default: every pipeline)",
+)
+def maintenance_close_dangling_runs(
+    database_url: str | None,
+    max_age_hours: float,
+    pipelines: tuple[str, ...],
+):
+    """Close import runs left dangling in 'running' by a killed process.
+
+    Any pipeline is eligible (prices_update included) as long as the run is
+    older than --max-age-hours, so a legitimately long run is never touched.
+    Each closed run keeps its previous error context and records the reason
+    and the age it had when it was closed.
+    """
+    from financial_database.db.repositories import ImportRunRepository
+
+    conn = _get_db_connection(database_url)
+    try:
+        closed = ImportRunRepository(conn).close_dangling_runs(
+            max_age_hours=max_age_hours,
+            pipelines=list(pipelines) or None,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    scope = ", ".join(pipelines) if pipelines else "all pipelines"
+    if not closed:
+        print(
+            f"✅ No dangling 'running' import runs older than {max_age_hours:g}h "
+            f"({scope})",
+            flush=True,
+        )
+        return
+
+    print(
+        f"🔧 Closed {len(closed)} dangling 'running' import run(s) older than "
+        f"{max_age_hours:g}h ({scope}):",
+        flush=True,
+    )
+    for row in sorted(closed, key=lambda item: item["started_at"], reverse=True):
+        print(
+            f"   - {row['id']} · {row['pipeline']} · started "
+            f"{row['started_at']:%Y-%m-%d %H:%M} ({row['age_hours']}h old) "
+            "-> failed",
+            flush=True,
+        )
+
+
+@cli.group()
 def prices():
     """Stock price ingestion commands."""
     pass
