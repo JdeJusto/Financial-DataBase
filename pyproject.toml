@@ -16,12 +16,34 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The price providers need yfinance/pandas. They are an extra rather than a
+# hard dependency so a SEC-only installation stays lean, but they MUST be
+# declared: financial_database.providers.price.yfinance_client imports pandas
+# at module level, so an undeclared dependency made both the CLI price
+# commands and the unit suite fail with ImportError after installation.
+prices = [
+    "yfinance>=0.2.50",
+    "pandas>=2.2.0",
+]
 dev = [
     "ruff",
     "pyright",
     "pytest",
     "pytest-asyncio",
-    "sqlalchemy>=2.0",
+    # The asyncio extra is required, not optional: importing
+    # sqlalchemy.util.asyncio (which the test suite does) raises without
+    # greenlet, so a bare 'sqlalchemy' made `pip install -e ".[dev]"` fail.
+    "sqlalchemy[asyncio]>=2.0",
+    # The SEC and price test modules import httpx (MockTransport), so the dev
+    # extra has to carry it or the unit suite cannot even be collected.
+    "httpx",
+    # The price ingestion tests import the yfinance provider.
+    "financial-database[prices]",
+    # The repository tests build their SQLAlchemy engine with a
+    # postgresql+psycopg2:// URL, so the psycopg2 driver must be present even
+    # though the application code speaks psycopg3. Aligning the test URLs with
+    # psycopg (and dropping this) would be the cleaner end state.
+    "psycopg2-binary>=2.9",
 ]
 
 [project.scripts]

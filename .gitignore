@@ -36,7 +36,7 @@ data/missing_companies.json
 stress_test.log
 
 # GitHub
-/.github/workflows/*.yml
+# /.github/workflows/*.yml  -- se removio: impedia versionar el CI
 
 # Pyright
 pyrightconfig.json
