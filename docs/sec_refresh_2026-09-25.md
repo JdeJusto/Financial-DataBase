@@ -2,15 +2,15 @@
 
 Live refresh of a bounded batch through the Value Investing daily workflow
 (`--universe sp500 --freshness-hours 48 --max-refresh 200 --resume`) with a
-compliant User-Agent (`FinancialDataBase/1.0 jaimedejusto@gmail.com`, kept in
-the git-ignored `.env`). Purpose: measure the bulk importer at batch scale
+compliant User-Agent (`FinancialDataBase/1.0 <your-e-mail>`, kept in
+the git-ignored `.env` and never written to this repository). Purpose: measure the bulk importer at batch scale
 after the 2026-09-24 changes (bulk `INSERT ... ON CONFLICT`, memoized
 `get_company_tickers`, `--limit` fix, `last_synced_at` stamping).
 
 ## 1. Access check
 
 ```
-$ curl -I -H "User-Agent: FinancialDataBase/1.0 jaimedejusto@gmail.com" \
+$ curl -I -H "User-Agent: FinancialDataBase/1.0 <your-e-mail>" \
     https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json
 HTTP=200
 ```
