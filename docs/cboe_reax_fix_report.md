@@ -47,13 +47,13 @@ trazabilidad, pero sin listing activo ya no interfiere en el universo.
 ---
 
 ## 3. Suites de tests
-### Value_Investing (`/home/caudillo/Value_Investing`)
+### Value_Investing (`~/Value_Investing`)
 ```
 361 passed, 1 skipped   (pytest tests/unit)
 ```
 Sin regresiones.
 
-### Financial-DataBase (`/home/caudillo/Financial-DataBase`)
+### Financial-DataBase (`~/Financial-DataBase`)
 ```
 180 passed, 4 failed, 1 warning
 ```

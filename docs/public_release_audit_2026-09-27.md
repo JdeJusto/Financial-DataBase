@@ -38,7 +38,7 @@ and were removed from HEAD by `1662dbe`.
 
 ## 2. Personal information
 
-**HEAD — 3 files contain `/home/caudillo`:**
+**HEAD — 3 files contain `~`:**
 
 | File | Lines |
 | --- | --- |

@@ -11,7 +11,7 @@ github.com domain or a generic agent is refused with HTTP 403, see
 Command (background, resumable):
 
 ```bash
-cd /home/caudillo/Value_Investing
+cd ~/Value_Investing
 SEC_USER_AGENT="FinancialDataBase/1.0 <your-e-mail>" \
 FINANCIAL_DATABASE_URL="postgresql://financial@localhost:5432/financial_database" \
 .venv/bin/python -m scripts.daily_workflow \

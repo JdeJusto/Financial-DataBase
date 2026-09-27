@@ -76,13 +76,13 @@ To automate daily updates, you can use cron jobs or similar scheduling mechanism
 
 ```cron
 # Run SEC update daily at 2 AM
-0 2 * * * source /home/caudillo/Financial-DataBase/.venv/bin/activate && python /home/caudillo/Financial-DataBase/src/financial_database/cli.py sec update-incremental >> /var/log/financial-db-sec-update.log 2>&1
+0 2 * * * source ~/Financial-DataBase/.venv/bin/activate && python ~/Financial-DataBase/src/financial_database/cli.py sec update-incremental >> /var/log/financial-db-sec-update.log 2>&1
 
 # Run price update daily at 3 AM
-0 3 * * * source /home/caudillo/Financial-DataBase/.venv/bin/activate && python /home/caudillo/Financial-DataBase/src/financial_database/cli.py prices update >> /var/log/financial-db-price-update.log 2>&1
+0 3 * * * source ~/Financial-DataBase/.venv/bin/activate && python ~/Financial-DataBase/src/financial_database/cli.py prices update >> /var/log/financial-db-price-update.log 2>&1
 
 # Or run combined update daily at 2:30 AM
-30 2 * * * source /home/caudillo/Financial-DataBase/.venv/bin/activate && python /home/caudillo/Financial-DataBase/src/financial_database/cli.py update-all >> /var/log/financial-db-update-all.log 2>&1
+30 2 * * * source ~/Financial-DataBase/.venv/bin/activate && python ~/Financial-DataBase/src/financial_database/cli.py update-all >> /var/log/financial-db-update-all.log 2>&1
 ```
 
 ## Monitoring
