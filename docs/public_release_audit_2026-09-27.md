@@ -16,7 +16,7 @@ it.
 
 | Pattern | Hits | Verdict |
 | --- | ---: | --- |
-| `jaimedejusto@gmail` | 4 | **Personal e-mail** (2 lines in one commit) |
+| `<SEC_CONTACT_EMAIL>` (the personal address) | 4 | **Real exposure** (2 lines in one commit) |
 | `@gmail\.com` | 4 | same |
 | `BEGIN RSA` / `BEGIN OPENSSH` | 0 | clean |
 | `api[_-]?key` | 0 | clean |
@@ -46,7 +46,8 @@ and were removed from HEAD by `1662dbe`.
 | `docs/runbook_daily_update.md` | 79, 82, 85 (cron examples) |
 | `docs/stale_sweep_2026-09-27.md` | 14 |
 
-**Personal e-mail addresses in HEAD: 0.** No `/Users/`, no `C:\Users\`, no
+**Personal e-mail addresses in HEAD: 0** (this document refers to the address
+only as `<SEC_CONTACT_EMAIL>`). No macOS or Windows user paths, no
 internal hostnames or IPs. README has **no absolute paths**.
 
 **History:** the four e-mail lines plus `name="Jaime"` nowhere (FDB never had
@@ -56,7 +57,7 @@ a SEC_NAME default).
 
 ```
 jdejusto@users.noreply.github.com   <- preferred (recent commits)
-jaimedejusto@gmail.com              <- personal
+<SEC_CONTACT_EMAIL>                <- personal
 jdejusto@example.com                <- placeholder
 noreply@anthropic.com               <- third-party agent identity
 ```
