@@ -39,11 +39,6 @@ dev = [
     "httpx",
     # The price ingestion tests import the yfinance provider.
     "financial-database[prices]",
-    # The repository tests build their SQLAlchemy engine with a
-    # postgresql+psycopg2:// URL, so the psycopg2 driver must be present even
-    # though the application code speaks psycopg3. Aligning the test URLs with
-    # psycopg (and dropping this) would be the cleaner end state.
-    "psycopg2-binary>=2.9",
 ]
 
 [project.scripts]
@@ -66,7 +61,8 @@ asyncio_mode = "auto"
 
 [dependency-groups]
 dev = [
-    "psycopg2-binary>=2.9.12",
+    # No psycopg2-binary: the test engine now uses the psycopg3 dialect, the
+    # same driver the application uses, so one driver covers both.
     "pytest-asyncio>=1.4.0",
-    "sqlalchemy>=2.0.52",
+    "sqlalchemy[asyncio]>=2.0.52",
 ]

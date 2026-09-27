@@ -32,9 +32,13 @@ def test_db_url():
 
 @pytest.fixture(scope="session")
 def db_engine(test_db_url):
-    """Create a SQLAlchemy engine for the test database."""
-    # Convert to psycopg2 URL
-    connection_url = test_db_url.replace("postgresql://", "postgresql+psycopg2://")
+    """Create a SQLAlchemy engine for the test database.
+
+    The URL uses the psycopg3 dialect, matching the application's driver
+    (``psycopg[binary]``), so the test environment no longer needs a second
+    PostgreSQL driver installed.
+    """
+    connection_url = test_db_url.replace("postgresql://", "postgresql+psycopg://")
     engine = create_engine(connection_url)
     yield engine
     engine.dispose()
@@ -113,7 +117,7 @@ def db_connection(test_db_url):
             script_content = f.read()
 
         # Replace parameters in the script.
-        # Scripts may use either psql-style (:key) or psycopg2-style
+        # Scripts may use either psql-style (:key) or DBAPI-style
         # (%(key)s) named placeholders; support both.
         if params:
             for key, value in params.items():
