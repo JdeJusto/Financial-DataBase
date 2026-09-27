@@ -1,5 +1,13 @@
 # Base de Datos Financiera
 
+Ingesta de datos de la SEC EDGAR (company facts, filings, submissions) en
+PostgreSQL, con procedencia auditable y scripts SQL de análisis reutilizables.
+Base de datos de [Value Investing](https://github.com/JdeJusto/Value_Investing),
+que consume sus fundamentales.
+
+> Documentación en inglés, comentarios y mensajes del pipeline en español: es
+> lo que hay hoy y no se cambia en este commit.
+
 ## Características
 
 - Esquema normalizado para datos financieros
@@ -32,21 +40,47 @@ La base de datos consta de las siguientes tablas principales:
 
 ### Prerrequisitos
 
-- PostgreSQL 12+
-- Python 3.8+ (para ejecutar pruebas y migraciones)
+- PostgreSQL 14+ (probado con 18)
+- Python 3.13+ (ver `requires-python` en `pyproject.toml`)
 
 ### Instalación
 
 1. Clonar el repositorio
 2. Copiar `.env.example` a `.env` y configurar la conexión a la base de datos
-3. Ejecutar las migraciones de base de datos:
+   (`.env` está en `.gitignore`: no se versiona nunca)
+3. Instalar el paquete y sus dependencias de desarrollo:
    ```bash
-   ./scripts/migrate.sh
+   python -m venv .venv && source .venv/bin/activate
+   pip install -e ".[dev]"
    ```
-4. Ejecutar la suite de pruebas para verificar que todo funciona:
+4. Ejecutar las migraciones de base de datos:
    ```bash
-   python -m pytest tests/
+   python -m financial_database.cli migrate
    ```
+   Usa el runner, **no** `psql -f`: el runner registra cada migración en
+   `schema_migrations` y una aplicación manual se volvería a intentar (y
+   fallaría) en la siguiente ejecución.
+5. Ejecutar la suite unitaria (no necesita base de datos):
+   ```bash
+   python -m pytest tests/unit -q
+   ```
+
+### Ingestión en 30 segundos
+
+```bash
+# 1. companyfacts de una empresa (una sola, por CIK)
+SEC_USER_AGENT="TuHerramienta/1.0 tu@email.com" \
+  python -m financial_database.cli sec sync 0000320193
+
+# 2. ¿qué se ingirió?
+psql "$DATABASE_URL" -c "
+  SELECT r.pipeline, r.status, c.legal_name, r.records_inserted,
+         r.records_skipped, r.duration_seconds
+  FROM import_runs r LEFT JOIN companies c ON c.id = r.company_id
+  ORDER BY r.started_at DESC LIMIT 5;"
+```
+
+
 
 ### Configuración SEC EDGAR
 
@@ -242,6 +276,41 @@ Véase `docs/analysis_scripts.md` para documentación detallada y ejemplos de us
 - [Fuentes de Datos y Proveedores](docs/data-sources.md)
 - [Instrucciones de Carga Completa](docs/runbook_full_load.md)
 - [Scripts de Análisis SQL](docs/analysis_scripts.md)
+- [Diagnóstico del HTTP 403 de la SEC](docs/sec_403_investigation.md) — por
+  qué el `User-Agent` importa y qué devuelve la SEC
+- [Barrido de datos obsoletos (2026-09-27)](docs/stale_sweep_2026-09-27.md) —
+  medición real del ingestor a escala de lote
+- [Bloqueo de `pg_stat_statements`](docs/pg_stat_statements_blocker.md) —
+  diagnóstico y alternativas sin reinicio
+- [Auditoría previa a publicar](docs/public_release_audit_2026-09-27.md)
+
+## Arquitectura
+
+```mermaid
+flowchart TD
+    CLI[financial-db CLI] --> PIPE[Pipeline de ingestión<br/>sec sync / bulk / prices]
+    PIPE --> SEC[SEC EDGAR<br/>submissions + companyfacts]
+    PIPE --> YF[yfinance / Stooq]
+    SEC --> NORM[Normalización a XBRL canónico]
+    NORM --> DB[(PostgreSQL<br/>companies · filings · financial_facts)]
+    DB --> RUNS[import_runs<br/>procedencia por ejecución]
+    RUNS -.-> DB
+    DB --> SQL[scripts/analysis/*.sql]
+    DB --> VI[Value Investing<br/>consumidor]
+```
+
+Cada ejecución queda registrada en `import_runs` con su estado, sus
+contadores y — desde la migración `0021` — la empresa concreta cuando el
+pipeline es por compañía (`sec sync`, `sec_submissions`, `sec_companyfacts`).
+Los pipelines por lotes dejan `company_id` a NULL a propósito.
+
+
+
+- [Descripción General de la Arquitectura](docs/architecture.md)
+- [Detalles del Esquema de Base de Datos](docs/database.md)
+- [Fuentes de Datos y Proveedores](docs/data-sources.md)
+- [Instrucciones de Carga Completa](docs/runbook_full_load.md)
+- [Scripts de Análisis SQL](docs/analysis_scripts.md)
 
 ## Desarrollo
 
@@ -283,3 +352,21 @@ Nota: Este archivo está incluido en `.gitignore` para evitar que se versióne, 
 ## Aviso Legal
 
 Este proyecto fue desarrollado con la asistencia de herramientas de IA para debugging, detección de errores y optimización de código. Aunque se usó asistencia de IA, todo el código ha sido revisado, probado y verificado por desarrolladores humanos para asegurar corrección y calidad.
+
+## Licencia
+
+[MIT](LICENSE) © 2026 Jaime de Justo. Cambiar de licencia es sustituir el
+fichero `LICENSE`: un commit.
+
+## Cómo contribuir
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Dos reglas del proyecto: las
+migraciones se aplican **con el runner** y son numeradas, y la ingestión
+debe seguir siendo **idempotente** (`ON CONFLICT DO NOTHING` + `import_runs`).
+
+## Aviso sobre datos de terceros
+
+El repositorio incluye una instantánea de referencia de la SEC
+(`company_tickers*.json`) usada para resolver tickers a CIK. Son datos
+públicos de la SEC EDGAR, no datos propietarios: se incluyen por
+reproducibilidad, no como fuente de verdad (la fuente es la API).
