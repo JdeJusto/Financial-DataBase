@@ -703,6 +703,35 @@ class SECImporter:
         self.conn.commit()
         return stats
 
+    def _company_id_for_cik(self, cik: str) -> str | None:
+        """Resolve a CIK to its company id, within the SEC EDGAR scope.
+
+        Used to scope an import run to the company it ingested; returns None
+        when the CIK is not known yet (a brand-new filer has no identifiers
+        row yet, so its first run stays unscoped).
+        """
+        normalized = normalize_cik(cik)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.id AS company_id
+                FROM companies c
+                JOIN company_identifiers ci ON c.id = ci.company_id
+                WHERE ci.identifier_type = 'CIK'
+                  AND ci.identifier_value = %s
+                  AND ci.provider_id = (
+                      SELECT id FROM data_providers WHERE name = 'SEC EDGAR'
+                  )
+                LIMIT 1
+                """,
+                (normalized,),
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        value = row["company_id"] if isinstance(row, dict) else row[0]
+        return str(value)
+
     def _stamp_last_synced(self, cik: str) -> None:
         """Set companies.last_synced_at = NOW() for the synced company."""
         normalized = normalize_cik(cik)
@@ -734,7 +763,16 @@ class SECImporter:
         # crashed/killed process before opening a fresh run, so provenance
         # shows exactly one active SEC pipeline.
         self.import_runs.mark_dangling_running(str(provider_id), list(SEC_PIPELINES))
-        run = self.import_runs.create(str(provider_id), pipeline_name, "running")
+        # Per-company pipelines are scoped to the company they ingest, so
+        # freshness is a single indexed lookup on import_runs.company_id
+        # instead of an indirect max(updated_at) scan. Batch pipelines
+        # (sec_universe) and unknown CIKs stay unscoped (NULL).
+        run = self.import_runs.create(
+            str(provider_id),
+            pipeline_name,
+            "running",
+            company_id=self._company_id_for_cik(cik) if cik else None,
+        )
         run_id = str(run["id"])
         start_time = time.time()
 

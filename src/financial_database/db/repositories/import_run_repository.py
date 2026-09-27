@@ -16,17 +16,28 @@ class ImportRunRepository:
         self.conn = conn
 
     def create(
-        self, provider_id: str, pipeline: str, status: str = "running"
+        self,
+        provider_id: str,
+        pipeline: str,
+        status: str = "running",
+        company_id: str | None = None,
     ) -> dict[str, Any]:
-        """Create a new import run record."""
+        """Create a new import run record.
+
+        ``company_id`` scopes the run to the company it ingested (per-company
+        pipelines: sec sync / sec_submissions / sec_companyfacts). Batch
+        pipelines (universe, update-incremental, bulk, prices_update) pass
+        None on purpose: they span many companies.
+        """
         with self.conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO import_runs (provider_id, pipeline, status)
-                   VALUES (%s, %s, %s)
-                   RETURNING id, provider_id, pipeline, status, records_processed, records_inserted,
+                """INSERT INTO import_runs (provider_id, pipeline, status, company_id)
+                   VALUES (%s, %s, %s, %s)
+                   RETURNING id, provider_id, pipeline, status, company_id,
+                   records_processed, records_inserted,
                    records_updated, records_skipped, errors, started_at, finished_at,
                    duration_seconds""",
-                (provider_id, pipeline, status),
+                (provider_id, pipeline, status, company_id),
             )
             rows = cur.fetchall()
             return rows[0] if rows else None
@@ -81,6 +92,26 @@ class ImportRunRepository:
         query = f"UPDATE import_runs SET {', '.join(set_parts)} WHERE id = %s"
         with self.conn.cursor() as cur:
             cur.execute(query, params)
+
+    def get_latest_for_company(self, company_id: str) -> dict | None:
+        """Latest import run that targeted a company, or None.
+
+        The per-company freshness lookup made possible by migration 0021:
+        one indexed read instead of aggregating facts/filings timestamps.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, pipeline, status, company_id, records_processed,
+                          records_inserted, records_skipped, started_at, finished_at,
+                          duration_seconds
+                   FROM import_runs
+                   WHERE company_id = %s
+                   ORDER BY started_at DESC
+                   LIMIT 1""",
+                (company_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
 
     def get_by_provider(self, provider_id: str) -> list[dict]:
         """Get import runs for a provider."""
