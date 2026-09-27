@@ -1,28 +1,56 @@
-# Pull Request Template
+# Pull request
 
-## Description
-Please describe the changes you've made and why.
+<!-- One-line summary of the change. -->
 
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Performance improvement
-- [ ] Documentation update
-- [ ] Refactor
-- [ ] Test addition/fix
-- [ ] CI/CD configuration
+## What changed
+
+<!--
+What the PR does, and why. If it changes the schema, the ingestion
+semantics, or the recorded provenance, say so explicitly.
+-->
 
 ## Checklist
-- [ ] I have read the AGENTS.md rules
-- [ ] My code follows the project's style guidelines (ruff format/check)
-- [ ] I have added unit tests for new functionality
-- [ ] I have updated the documentation if needed
-- [ ] I have added/updated environment variables in .env.example if needed
-- [ ] All checks pass (CI)
 
-## How Has This Been Tested?
-Describe the tests you've run to verify your changes.
+- [ ] `python -m pytest tests/unit -q` is green
+- [ ] Tests added or updated for the new behaviour
+- [ ] **No secrets**: no `.env`, no connection string with a password, no API
+      key, no personal e-mail (use `<your-e-mail>` in docs)
+- [ ] No personal absolute paths (`/home/<user>/…`) in code, docs or unit files
+- [ ] Docs updated (`docs/`, README) where behaviour or setup changed
+- [ ] Commit messages in the imperative mood, one concern per commit
 
-## Sensitive Data
-- [ ] No secrets or credentials have been added
-- [ ] .env.example has been updated (not real secrets)
+## Project invariants
+
+- [ ] Schema changes ship as a **numbered migration** in `db/migrations/` and
+      the manifest assertions in `tests/unit/test_migrations.py` are updated
+      (count + expected names)
+- [ ] Migrations are applied with `python -m financial_database.cli migrate`,
+      never with a bare `psql -f` (the runner records them in
+      `schema_migrations`)
+- [ ] Ingestion stays idempotent: bulk inserts use `ON CONFLICT DO NOTHING`
+      and every run records itself in `import_runs`
+- [ ] Per-company pipelines scope `import_runs.company_id`; batch pipelines
+      leave it NULL on purpose
+- [ ] SEC requests keep a compliant `SEC_USER_AGENT` and stay bounded — no
+      database-wide sweep unless explicitly requested
+- [ ] All SQL is parameterised; no string interpolation of user input
+
+## Verification
+
+<!--
+The command and its output. For ingestion changes, the row counts
+(records_inserted / records_skipped) and a duplicate check:
+
+    SELECT count(*) FROM (
+      SELECT 1 FROM financial_facts
+      GROUP BY company_id, concept, period_start, period_end, filing_id, source_id
+      HAVING count(*) > 1
+    ) d;   -- expect 0
+-->
+
+```
+```
+
+## Additional context
+
+<!-- Anything a reviewer should know before approving. -->
