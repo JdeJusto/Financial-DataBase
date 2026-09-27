@@ -18,7 +18,7 @@ it.
 | --- | ---: | --- |
 | `<SEC_CONTACT_EMAIL>` (the personal address) | 4 | **Real exposure** (2 lines in one commit) |
 | `@gmail\.com` | 4 | same |
-| `BEGIN RSA` / `BEGIN OPENSSH` | 0 | clean |
+| private-key headers (RSA / OpenSSH / PGP) | 0 | clean |
 | `api[_-]?key` | 0 | clean |
 | `password` | 3 | false positives: `TEST_DB_PASSWORD` env default `"test"` and `plain_password`-style identifiers in test code |
 | `postgres://user:pass@` | 0 | no credential in a connection string |
