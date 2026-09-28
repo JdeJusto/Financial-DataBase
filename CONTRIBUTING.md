@@ -55,13 +55,14 @@ assertions in `tests/unit/test_migrations.py` (count and expected names).
 ## Running the tests
 
 ```bash
-python -m pytest tests/unit -q          # no database required
-python -m pytest tests/integration -q   # needs a test database
+python -m pytest tests/unit -q           # no database required
 ```
 
-The unit suite is hermetic. The integration suite targets
-`financial_database_test` and is parameterised through `TEST_DB_*`; keep it
-away from any database you care about.
+The integration suite requires a separate, migrated PostgreSQL database named
+`financial_database_test` by default. Set `DATABASE_URL` for the migration
+command and `TEST_DB_*` for the fixtures; never point either at data you care
+about. The SQL-analysis integration tests skip unless that database contains
+SEC facts for AAPL and MSFT.
 
 ## Code style
 
