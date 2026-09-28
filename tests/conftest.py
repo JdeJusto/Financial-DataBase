@@ -85,17 +85,11 @@ def async_db_session(async_db_engine):
 def db_connection(test_db_url):
     """Create a psycopg connection for testing repositories directly.
 
-    Function-scoped (fresh connection per test) so that per-module overrides
-    of the session-scoped ``test_db_url`` fixture actually take effect: a
-    session-scoped connection would be created once against the first URL
-    used in the session and then reused for tests that override the URL
-    (e.g. the analysis-script tests that run against the development
-    database). Requests always bind at call time, so each test connects to
-    the database its fixtures point at.
+    Function-scoped so each test gets a fresh connection to the isolated test
+    database and its transaction can be rolled back during teardown.
     """
     import psycopg
     from psycopg.rows import dict_row
-    import os
 
     conn = psycopg.connect(
         test_db_url.replace("postgresql://", "postgresql://"), row_factory=dict_row

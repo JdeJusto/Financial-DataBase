@@ -62,11 +62,31 @@ For a cautious SEC bulk-ingestion run, begin with `financial-db sec bulk-ingest 
 ## Tests
 
 ```bash
-python -m pytest tests/unit -q          # no database required
-python -m pytest tests/integration -q   # requires an isolated test database
+python -m pytest tests/unit -q           # no database required
 ```
 
-Configure integration tests with the `TEST_DB_*` variables from `.env.example`. Never point them at a database containing data you care about.
+Repository and SQL integration tests need a separate PostgreSQL test database.
+With the Compose database running, create and migrate it once:
+
+```bash
+docker compose up -d postgres
+docker compose exec postgres createdb -U financial financial_database_test
+DATABASE_URL=postgresql://financial:test@localhost:5432/financial_database_test \
+  python -m financial_database.cli migrate
+```
+
+Then point the test fixtures at that database and run the integration suite:
+
+```bash
+TEST_DB_NAME=financial_database_test \
+TEST_DB_USER=financial TEST_DB_PASSWORD=test \
+TEST_DB_HOST=localhost TEST_DB_PORT=5432 \
+python -m pytest tests/integration -q
+```
+
+The SQL-analysis integration tests skip unless the test database contains SEC
+facts for AAPL and MSFT. Never point test fixtures at a database with data you
+care about.
 
 ## Project layout
 

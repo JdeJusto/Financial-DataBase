@@ -62,11 +62,32 @@ Para probar la ingestión masiva SEC con cautela, empieza con `financial-db sec 
 ## Pruebas
 
 ```bash
-python -m pytest tests/unit -q          # no necesita base de datos
-python -m pytest tests/integration -q   # requiere una base de datos de pruebas aislada
+python -m pytest tests/unit -q           # no necesita base de datos
 ```
 
-Configura las pruebas de integración con las variables `TEST_DB_*` de `.env.example`. No las apuntes a una base de datos con datos que quieras conservar.
+Las pruebas de repositorios y SQL requieren una base PostgreSQL de pruebas
+separada. Con la base de Compose en marcha, créala y aplica las migraciones una
+vez:
+
+```bash
+docker compose up -d postgres
+docker compose exec postgres createdb -U financial financial_database_test
+DATABASE_URL=postgresql://financial:test@localhost:5432/financial_database_test \
+  python -m financial_database.cli migrate
+```
+
+Después apunta los fixtures a esa base y ejecuta la suite de integración:
+
+```bash
+TEST_DB_NAME=financial_database_test \
+TEST_DB_USER=financial TEST_DB_PASSWORD=test \
+TEST_DB_HOST=localhost TEST_DB_PORT=5432 \
+python -m pytest tests/integration -q
+```
+
+Las pruebas de análisis SQL se omiten si la base de test no contiene hechos SEC
+de AAPL y MSFT. No apuntes los fixtures a una base con datos que quieras
+conservar.
 
 ## Estructura del proyecto
 
