@@ -24,7 +24,7 @@
 --      that do not resolve to a company holding a CIK identifier here. The
 --      embedded block is a snapshot of that file (500 tickers).
 --   Regenerate this block after any universe.csv change by running:
---     .venv/bin/python docs/dev/rebuild_health_universe.py
+--     .venv/bin/python scripts/dev/rebuild_health_universe.py
 --   (reads Value Investing's config/universe.csv and rewrites this file).
 
 \set ON_ERROR_STOP off

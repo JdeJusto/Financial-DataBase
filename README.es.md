@@ -1,195 +1,94 @@
-# Base de Datos Financiera
+# Financial-DataBase
 
-## Características
+[English](README.md) · [Español](README.es.md)
 
-- Esquema normalizado para datos financieros
-- Soporte para varios proveedores de datos
-- Seguimiento de procedencia completo con identificadores de origen
-- Rastreo de auditoría para todas las operaciones de importación
-- Diseño flexible para acomodar varios tipos de datos financieros
-- Índices para patrones de consulta comunes
-- **Pipeline de ingestión SEC EDGAR** - Importación de datos de producción
+Proyecto en Python y PostgreSQL para ingerir presentaciones regulatorias y hechos financieros de empresas, conservar su procedencia y consultarlos mediante una CLI y análisis SQL reutilizables.
 
-## Descripción General del Esquema
+> **Principio de diseño:** «Los tontos admiran la complejidad; los genios admiran la simpleza». El esquema, el flujo de datos y los comandos deben ser comprensibles; la procedencia se registra, no se oculta tras más capas.
 
-La base de datos consta de las siguientes tablas principales:
+## Qué ofrece
 
-- `companies` - Información básica de empresas
-- `company_identifiers` - Varios identificadores de empresas (CIK, FIGI, etc.)
-- `company_listings` - Cotizaciones en bolsa de las empresas
-- `exchanges` - Bolsas de valores
-- `data_providers` - Fuentes de datos financieros
-- `filings` - Presentaciones regulatorias SEC y documentos similares
-- `financial_facts` - Datos financieros normalizados de estados financieros
-- `prices` - Datos históricos de precios y volúmenes
-- `dividends` - Declaraciones y pagos de dividendos
-- `splits` - Eventos de división de acciones
-- `raw_documents` - Metadatos de archivos de datos raw preservados
-- `import_runs` - Registro de auditoría para operaciones de importación
+- Importación de identificadores de empresas, presentaciones SEC, submissions y hechos XBRL.
+- Almacenamiento de hechos normalizados y precios diarios en PostgreSQL con procedencia por proveedor.
+- Registro de ejecuciones, ingestión masiva reanudable y consultas SQL reutilizables.
+- Interfaz de línea de comandos `financial-db`.
 
-## Empezando
+## Fuentes de datos y herramientas externas
 
-### Prerrequisitos
+| Fuente o herramienta | Uso |
+| --- | --- |
+| [SEC EDGAR](https://www.sec.gov/edgar) | Fuente principal de identificadores de empresas, presentaciones regulatorias, submissions y Company Facts XBRL. Las peticiones requieren un `SEC_USER_AGENT` descriptivo con datos de contacto válidos y deben respetar las políticas de acceso de SEC. |
+| [Yahoo Finance](https://finance.yahoo.com/) mediante [`yfinance`](https://github.com/ranaroussi/yfinance) | Fuente actual de datos diarios OHLCV para `financial-db prices update`. A diferencia del servicio de precios bajo demanda de Value Investing, este proyecto **guarda los precios importados** en la tabla PostgreSQL `prices`. La cobertura, los retrasos y la disponibilidad dependen de Yahoo. |
+| Stooq | Se conserva una implementación antigua del proveedor en el código; el comando actual `prices update` utiliza Yahoo Finance, no Stooq. |
+| PostgreSQL | Base de datos necesaria para hechos normalizados, migraciones, procedencia y precios importados. Docker Compose ofrece un servicio local de desarrollo. |
 
-- PostgreSQL 12+
-- Python 3.8+ (para ejecutar pruebas y migraciones)
+El fichero versionado `data/company_tickers_full.json` es una instantánea de referencia SEC de empresas y tickers para resolver identificadores de forma reproducible. Son datos públicos de referencia, no sustituyen a las presentaciones SEC actuales. La licencia MIT de este proyecto cubre solo el código; los datos y marcas de terceros siguen sujetos a las condiciones de sus proveedores.
 
-### Instalación
+La pila principal usa Python, PostgreSQL, Psycopg 3, `aiohttp` e `ijson`;
+la ingestión de precios de Yahoo también usa `yfinance` y pandas. La lista
+completa de dependencias y extras opcionales está en `pyproject.toml`.
 
-1. Clonar el repositorio
-2. Copiar `.env.example` a `.env` y configurar la conexión a la base de datos
-3. Ejecutar las migraciones de base de datos:
-   ```bash
-   ./scripts/migrate.sh
-   ```
-4. Ejecutar la suite de pruebas para verificar que todo funciona:
-   ```bash
-   python -m pytest tests/
-   ```
+## Inicio rápido
 
-### Configuración SEC EDGAR
-
-Para usar el pipeline de ingestión SEC, debe configurar un User-Agent según lo requiera la SEC:
-
-1. Editar `.env` y configurar `SEC_USER_AGENT`:
-   ```
-   SEC_USER_AGENT=tu-aplicacion/1.0 contacto@tudominio.com
-   ```
-   La SEC exige un User-Agent único y descriptivo con información de contacto.
-
-2. Configurar el almacenamiento de datos raw (opcional):
-   ```
-   DATA_RAW_DIR=./data/raw
-   ```
-   Las respuestas SEC raw se guardan aquí para procedencia y re-procesamiento.
-
-## Ingestión SEC EDGAR
-
-El CLI `financial-db` provee comandos de ingestión SEC:
+Requisitos: Python 3.13+ y PostgreSQL 14+ (el archivo Compose usa PostgreSQL 18). El extra `dev` incluye las dependencias para precios de Yahoo.
 
 ```bash
-# Semilla de proveedor y bolsas SEC
-financial-db sec seed-provider
-financial-db sec seed-exchanges
+git clone https://github.com/JdeJusto/Financial-DataBase.git
+cd Financial-DataBase
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+cp .env.example .env
+```
 
-# Importar universo de empresas (tickers, CIK, exchanges)
-financial-db sec universe
+Edita `.env`: configura `DATABASE_URL` y sustituye el `SEC_USER_AGENT` de ejemplo por un nombre descriptivo de aplicación y un correo real de contacto. La CLI lee variables de entorno; carga el fichero en la shell antes de ejecutar comandos:
 
-# Importar presentaciones para una empresa específica (por CIK)
-financial-db sec submissions 0000320193
+```bash
+set -a
+. ./.env
+set +a
 
-# Importar hechos XBRL (CompanyFacts) para una empresa específica
-financial-db sec companyfacts 0000320193
-
-# Sincronización completa para una sola empresa
+docker compose up -d postgres
+python -m financial_database.cli migrate
 financial-db sec sync 0000320193
-
-# Ejecutar cualquier comando en modo seco (preview sin escribir)
-financial-db sec sync 0000320193 --dry-run
+financial-db prices update --limit 10
 ```
 
-**Importaciones dirigidas** (p. ej., `--cik 0000320193`) son el flujo de trabajo principal. La sincronización del universo completo (`financial-db sec sync-all --confirm`) está disponible pero implica miles de solicitudes HTTP.
+El último comando consulta Yahoo Finance en vivo y escribe los precios importados en la base de datos. Las credenciales predeterminadas de Compose son solo para desarrollo local; no las reutilices en un entorno publicado.
 
-### Ingestión Bulk Histórica (Fase 3.5/3.6/3.6.9)
+Para probar la ingestión masiva SEC con cautela, empieza con `financial-db sec bulk-ingest --dry-run` y una ejecución limitada. Una carga histórica completa puede requerir mucho almacenamiento y numerosas peticiones a SEC; consulta la [guía de carga completa](docs/runbook_full_load.md).
 
-Para cargar el universo completo SEC EDGAR desde ingestion based en API:
+## Pruebas
 
 ```bash
-# Ejecutar dry-run para validar la configuración
-financial-db sec bulk-ingest --dry-run
-
-# Ingestión bulk completa (based en API, procesa todas las empresas)
-financial-db sec bulk-ingest --confirm
-
-# Procesar con límite para testing
-financial-db sec bulk-ingest --limit 100 --confirm
-
-# Reanudar desde checkpoint después de una interrupción
-financial-db sec bulk-ingest --checkpoint-file ./data/checkpoints/sec_bulk/full_universe_checkpoint.json --confirm
+python -m pytest tests/unit -q          # no necesita base de datos
+python -m pytest tests/integration -q   # requiere una base de datos de pruebas aislada
 ```
 
-**Opciones de ingestión bulk:**
-| Opción | Descripción |
-|--------|-------------|
-| `--limit N` | Procesar solo las primeras N empresas |
-| `--checkpoint-file` | Archivo de checkpoint para reanudabilidad |
-| `--dry-run` | Validar sin escribir en la base de datos |
-| `--verbose` | Registro detallado |
-| `--confirm` | Requerido para ejecuciones completas |
-| `--api-mode` | Usar SEC API para ingestion (por defecto) |
+Configura las pruebas de integración con las variables `TEST_DB_*` de `.env.example`. No las apuntes a una base de datos con datos que quieras conservar.
 
-**Características:**
-- **Efficient en memoria**: Parser JSON streaming (ijson) para respuestas grandes
-- **Checkpoint/resume**: Checkpoints atómicos guardados cada 30s o cada 500 hechos
-- **Idempotent**: Volver a ejecutar produce cero duplicados
-- **Historia completa**: Sin filtrado de fechas - ingesta TODOS los datos históricos desde el primer filing
-- **Resiliente a redes**: Reintentos infinitos con intervalos de 10s, backoff 429/5xx/404
-- **Apagado graceful**: Manejadores SIGINT/SIGTERM que guardan checkpoint y salen limpio
-- **Recuperación de fallos**: Reanudar desde el último checkpoint sin duplicados
-- **Inserts por lotes**: 500 hechos por transacción, mejora de desempeño 50%+
-- **~56 horas** para el universo completo (~10,000 empresas)
+## Estructura del proyecto
 
-**Rendimiento (validado):**
-| Métrica | Valor (608 empresas) | Extrapolado (10,388) |
-|---------|----------------------|----------------------|
-| Tiempo | ~51 min | ~14.5 horas |
-| Hechos insertados | ~12.3M | ~213M |
-| Presentaciones insertadas | ~130K | ~2.2M |
-| Tamaño de base de datos | ~10 GB | ~170–200 GB |
-| Tiempo promedio/empresa | ~5.0s | ~5.0s (bounded by network) |
-
-### Resultados de Estrés (Fase 3.8)
-
-Se ejecutó una prueba de estrés con 608 empresas y se validó. Resultados:
-
-- Empresas procesadas: 608 (587 insertadas, 21 actualizadas)
-- Presentaciones insertadas: 129,974
-- Hechos financieros insertados: 12,343,979
-- Errores: 10 (todos esperados `404` para no-XBRL filers: fondos de inversión, ADRs, trusts de royalties)
-- Tiempo transcurrido: ~51 minutos
-- Auditoría de integridad: cero duplicados/órfanos (ver `docs/validation_report.md`)
-- Cobertura histórica: principales emisores desde 2009 (ver `scripts/verify_history.sql`)
-
-Comando para carga full universe:
-
-```bash
-SEC_USER_AGENT="TuApp/1.0 you@example.com" \
-.venv/bin/python -m financial_database.cli sec bulk-ingest --confirm
+```text
+src/financial_database/ CLI, proveedores SEC y de precios, repositorios
+db/migrations/          migraciones PostgreSQL ordenadas
+scripts/analysis/        consultas SQL reutilizables
+scripts/stress/          utilidades de pruebas de estrés
+scripts/dev/             ayudas de desarrollo y mantenimiento
+tests/unit/              pruebas aisladas
+tests/integration/       pruebas de base de datos e ingestión
+docs/                    guías, runbooks e informes históricos
 ```
-
-Reanudar desde una interrupción con el mismo comando (el checkpoint es source-aware y reanuda automáticamente). Usar `--force` para restablecer el progreso y empezar desde cero.
 
 ## Documentación
 
-- [Descripción General de la Arquitectura](docs/architecture.es.md)
-- [Detalles del Esquema de Base de Datos](docs/database.es.md)
-- [Fuentes de Datos y Proveedores](docs/data-sources.es.md)
-- [Instrucciones de Carga Completa](docs/runbook_full_load.es.md)
+- [Arquitectura](docs/architecture.es.md) · [Esquema de base de datos](docs/database.es.md)
+- [Fuentes de datos](docs/data-sources.es.md) · [Guía de precios en inglés](docs/price_ingestion.md)
+- [Scripts SQL de análisis](docs/analysis_scripts.md)
+- [Actualizaciones diarias en inglés](docs/runbook_daily_update.md) · [Carga SEC completa en inglés](docs/runbook_full_load.md)
+- [Contribuir](CONTRIBUTING.md) · [Seguridad](SECURITY.md) · [Código de conducta](CODE_OF_CONDUCT.md)
 
-## Desarrollo
+## Licencia
 
-### Ejecutando Pruebas
-
-```bash
-# Ejecutar todas las pruebas
-python -m pytest tests/
-
-# Ejecutar pruebas con cobertura
-python -m pytest tests/ --cov=src
-
-# Ejecutar un módulo de pruebas específico
-python -m pytest tests/unit/test_prices.py
-
-# Ejecutar pruebas del proveedor SEC
-python -m pytest tests/unit/test_sec_*.py
-```
-
-### Agregando Migraciones
-
-1. Crear un nuevo archivo SQL en `db/migrations/` con el númerosequencial siguiente
-2. Agregar sus sentencias DDL
-3. El sistema de migraciones aplicará automáticamente las nuevas migraciones
-
-## Aviso Legal
-
-Este proyecto fue desarrollado con la asistencia de herramientas de IA para debugging, detección de errores y optimización de código. Aunque se usó asistencia de IA, todo el código ha sido revisado, probado y verificado por desarrolladores humanos para asegurar corrección y calidad.
+[MIT](LICENSE). La licencia cubre el código del proyecto, no los datos externos ni las condiciones de los proveedores.

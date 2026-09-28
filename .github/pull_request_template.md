@@ -13,8 +13,9 @@ semantics, or the recorded provenance, say so explicitly.
 
 - [ ] `python -m pytest tests/unit -q` is green
 - [ ] Tests added or updated for the new behaviour
-- [ ] **No secrets**: no `.env`, no connection string with a password, no API
-      key, no personal e-mail (use `<your-e-mail>` in docs)
+- [ ] **No secrets**: no `.env`, database credentials, API keys, or private
+      third-party contact data. The maintainer contact is intentionally listed
+      in `SECURITY.md` and `CODE_OF_CONDUCT.md`.
 - [ ] No personal absolute paths (`/home/<user>/…`) in code, docs or unit files
 - [ ] Docs updated (`docs/`, README) where behaviour or setup changed
 - [ ] Commit messages in the imperative mood, one concern per commit

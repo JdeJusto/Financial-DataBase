@@ -5,7 +5,8 @@ import sys
 from pathlib import Path
 
 # Read the stress test CIKs
-stress_ciks_file = Path("data/stress_test_ciks.txt")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+stress_ciks_file = REPO_ROOT / "data" / "stress_test_ciks.txt"
 if not stress_ciks_file.exists():
     print(f"Error: {stress_ciks_file} not found")
     sys.exit(1)
@@ -16,7 +17,10 @@ print(f"Loaded {len(stress_ciks)} CIKs from stress test list")
 
 # Determine the path to the raw company_tickers_exchange.json
 # The client stores raw data in DATA_RAW_DIR/reference/company_tickers_exchange.json
-raw_dir = Path(os.environ.get("DATA_RAW_DIR", "./data/raw")) / "sec" / "reference"
+raw_dir = Path(os.environ.get("DATA_RAW_DIR", str(REPO_ROOT / "data" / "raw")))
+if not raw_dir.is_absolute():
+    raw_dir = REPO_ROOT / raw_dir
+raw_dir = raw_dir / "sec" / "reference"
 tickers_file = raw_dir / "company_tickers_exchange.json"
 
 if not tickers_file.exists():

@@ -1,7 +1,4 @@
-"""
-This test demonstrates the fix for the stale checkpoint issue and can be added to
-tests/integration/test_bulk_ingest_resume.py or tests/integration/test_bulk_ingest_full_universe.py
-"""
+"""Regression test for resuming SEC ingestion with a stale checkpoint."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 

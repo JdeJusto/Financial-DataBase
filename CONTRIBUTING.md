@@ -11,8 +11,9 @@ Requires Python 3.13+ and PostgreSQL 14+.
 ```bash
 git clone <your-fork-url>
 cd Financial-DataBase
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"          # or: pipenv install --dev
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 cp .env.example .env
 ```
 
@@ -27,6 +28,15 @@ cp .env.example .env
 The SEC answers **HTTP 403** to requests without a compliant User-Agent and
 to addresses in the `github.com` family; `docs/sec_403_investigation.md` has
 the full diagnosis. Use a real e-mail domain you control.
+
+The CLI reads environment variables rather than loading `.env` itself. After
+editing the file, load it into the shell before running commands:
+
+```bash
+set -a
+. ./.env
+set +a
+```
 
 ## Database migrations
 
@@ -49,7 +59,7 @@ python -m pytest tests/unit -q          # no database required
 python -m pytest tests/integration -q   # needs a test database
 ```
 
-The unit suite (158 tests) is hermetic. The integration suite targets
+The unit suite is hermetic. The integration suite targets
 `financial_database_test` and is parameterised through `TEST_DB_*`; keep it
 away from any database you care about.
 

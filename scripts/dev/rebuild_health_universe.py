@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Regenerate the section-4 ticker snapshot inside check_ticker_health.sql.
 
 Section 4 of scripts/check_ticker_health.sql embeds the Value Investing
@@ -8,7 +7,7 @@ This script rewrites that block from the current universe.csv so the
 snapshot stays in sync.
 
 Usage:
-    .venv/bin/python docs/dev/rebuild_health_universe.py
+    .venv/bin/python scripts/dev/rebuild_health_universe.py
 
 The script locates the script file relative to this repository, replaces
 the VALUES list between section 4's "(VALUES" marker and the closing ")"

@@ -1,12 +1,16 @@
-#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
 
-# Test connection directly
-conn = psycopg.connect(
-    'postgresql://financial:test@localhost:5432/financial_database', row_factory=dict_row
-)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    sys.exit("Set DATABASE_URL to a development/test database before running this helper.")
+
+conn = psycopg.connect(database_url, row_factory=dict_row)
 
 print('Connected to database')
 
@@ -25,7 +29,9 @@ def execute_script(script_path, params=None):
             elif isinstance(value, list):
                 # Handle array parameters (for IN clauses etc.)
                 if all(isinstance(item, str) for item in value):
-                    quoted_items = [f"'{item.replace(\"'\", \"''\")}'" for item in value]
+                    quoted_items = [
+                        "'" + item.replace("'", "''") + "'" for item in value
+                    ]
                     array_str = f"ARRAY[{','.join(quoted_items)}]"
                     script_content = script_content.replace(f':{key}', array_str)
                 else:
@@ -62,9 +68,12 @@ conn.execute_script = execute_script
 # Test the connection
 print('Testing company overview script...')
 try:
-    result = conn.execute_script('scripts/analysis/company_overview.sql', {'cik': '0000320193'})
+    result = conn.execute_script(
+        str(REPO_ROOT / "scripts/analysis/company_overview.sql"),
+        {"cik": "0000320193"},
+    )
     print('SUCCESS: Result:', result)
-except Exception as e:
+except psycopg.Error as e:
     print('FAILED:', e)
 
 conn.close()

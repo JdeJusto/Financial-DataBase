@@ -23,7 +23,7 @@ The financial database requires regular updates to maintain data accuracy and re
 Updates SEC data (filings, financial facts) for companies that have stale data.
 
 ```bash
-python src/financial_database/cli.py sec update-incremental \
+python -m financial_database.cli sec update-incremental \
     --max-age-hours 24 \
     --batch-size 100
 ```
@@ -40,7 +40,7 @@ python src/financial_database/cli.py sec update-incremental \
 Updates stock prices from Yahoo Finance for all active listings.
 
 ```bash
-python src/financial_database/cli.py prices update \
+python -m financial_database.cli prices update \
     --limit 1000
 ```
 
@@ -54,7 +54,7 @@ python src/financial_database/cli.py prices update \
 The `update-all` command runs both SEC incremental update and stock price update sequentially.
 
 ```bash
-python src/financial_database/cli.py update-all \
+python -m financial_database.cli update-all \
     --sec-max-age-hours 24 \
     --sec-batch-size 100 \
     --price-limit 1000
@@ -74,15 +74,19 @@ To automate daily updates, you can use cron jobs or similar scheduling mechanism
 
 ### Example Cron Entries
 
+Replace `/path/to/Financial-DataBase` with the checkout path. These examples
+load the ignored `.env` file in the job's shell; protect that file with
+appropriate filesystem permissions.
+
 ```cron
 # Run SEC update daily at 2 AM
-0 2 * * * source ~/Financial-DataBase/.venv/bin/activate && python ~/Financial-DataBase/src/financial_database/cli.py sec update-incremental >> /var/log/financial-db-sec-update.log 2>&1
+0 2 * * * cd /path/to/Financial-DataBase && set -a && . ./.env && set +a && .venv/bin/python -m financial_database.cli sec update-incremental
 
 # Run price update daily at 3 AM
-0 3 * * * source ~/Financial-DataBase/.venv/bin/activate && python ~/Financial-DataBase/src/financial_database/cli.py prices update >> /var/log/financial-db-price-update.log 2>&1
+0 3 * * * cd /path/to/Financial-DataBase && set -a && . ./.env && set +a && .venv/bin/python -m financial_database.cli prices update
 
 # Or run combined update daily at 2:30 AM
-30 2 * * * source ~/Financial-DataBase/.venv/bin/activate && python ~/Financial-DataBase/src/financial_database/cli.py update-all >> /var/log/financial-db-update-all.log 2>&1
+30 2 * * * cd /path/to/Financial-DataBase && set -a && . ./.env && set +a && .venv/bin/python -m financial_database.cli update-all
 ```
 
 ## Monitoring

@@ -1,5 +1,16 @@
 # Public release readiness audit — 2026-09-27
 
+## Maintainer update — 2026-09-28
+
+This is a dated snapshot, not the current release checklist. The maintainer
+confirmed that the account-associated author email in existing Git history is
+acceptable; **the history will not be rewritten**. The repository now has an
+MIT license, contribution/security/community policies, CI, issue and
+pull-request templates, and a bilingual README. The README documents the SEC
+reference snapshot and the current Yahoo Finance price-ingestion path. Review
+the current README and GitHub settings before publishing; other commit-author
+metadata has not been rewritten.
+
 Audit of **Financial-DataBase** before making the repository public.
 Read-only: nothing was modified while producing it. `gitleaks` and
 `trufflehog` are not installed on this machine, so the scan is pattern-based

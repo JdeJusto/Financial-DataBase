@@ -8,8 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-# Add the src directory to the path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add this checkout's src directory to the path.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from financial_database.providers.sec.client import SECClient
 
@@ -199,7 +200,7 @@ async def main():
         print(f"Total selected companies: {len(selected_ciks)}")
 
         # Save to file
-        output_file = Path("data/stress_test_ciks.txt")
+        output_file = REPO_ROOT / "data" / "stress_test_ciks.txt"
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text("\n".join(sorted(selected_ciks)) + "\n")
         print(f"Saved selected CIKs to {output_file}")

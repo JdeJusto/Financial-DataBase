@@ -20,7 +20,7 @@ assignees: ''
 
 **Environment**
 
-- Value Investing commit: `git rev-parse --short HEAD`
+- Financial-DataBase commit: `git rev-parse --short HEAD`
 - Python: `python --version`
 - Database: PostgreSQL `SELECT version();`
 - Command and flags used (e.g. `sec sync <CIK>`, `prices update --limit 10`)
