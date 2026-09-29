@@ -311,8 +311,10 @@ def main(argv: list[str] | None = None) -> int:
             continue
         try:
             info = _fetch_sector_info(ticker)
-            sector = info.get("sector")
-            industry = info.get("industry")
+            # Yahoo returns empty strings (not None) for some shells/SPACs;
+            # treat those as missing so they stay retryable.
+            sector = info.get("sector") or None
+            industry = info.get("industry") or None
             if sector is None and industry is None:
                 print(f"{ticker:<8} {row['legal_name']:<48} no-data      (skipped)")
                 skipped += 1
