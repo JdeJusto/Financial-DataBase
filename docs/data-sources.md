@@ -454,3 +454,35 @@ Para agregar un nuevo tipo de proveedor de datos:
 - Web scraping y sentiment analysis firms
 - Supply chain y logistics data providers
 - Patent y trademark data providers
+---
+
+## Enriquecimiento de `companies.sector` / `companies.industry`
+
+Los valores provienen de Yahoo Finance mediante
+`scripts/populate_sector_industry.py` (enriquecimiento de runtime: se
+escriben en la base de datos, nunca se commitean). El script es reanudable:
+por defecto selecciona empresas con `sector IS NULL` y listing activo en
+exchanges de EE.UU. (`US_EXCHANGE_CODES`), excluye los tickers ya intentados
+del checkpoint antes de aplicar `--limit`, y su preflight de Yahoo reintenta
+de forma acotada antes de abortar.
+
+### Decisión: OTC fuera de alcance (2026-09-29)
+
+Universo de empresas con `sector IS NULL` y listing activo, por exchange:
+
+| Exchange | Empresas sin sector |
+|---|---|
+| NASDAQ | 2.845 |
+| NYSE | 2.158 |
+| OTC | 1.791 |
+
+OTC representa el **26,4%** de los NULL (por debajo del umbral del 30%):
+las empresas OTC suelen carecer de los fundamentales que Value Investing
+consume (muchas no presentan ante la SEC o lo hacen de forma esporádica) y
+Yahoo devuelve información de sector menos fiable para ellas. Se dejan
+fuera **por diseño**; no existe modo `--include-otc`. Si en el futuro se
+quieren cubrir, basta añadir `"OTC"` a `US_EXCHANGE_CODES` (o un flag
+dedicado) y relanzar el script, que es reanudable.
+
+Las ADR/extranjeras que cotizan en NASDAQ/NYSE sí están dentro del alcance
+(Yahoo suele resolver su sector).
