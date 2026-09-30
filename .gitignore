@@ -29,6 +29,7 @@ images/
 # Data (datos generados durante ejecución, no versionar)
 data/raw/
 data/checkpoints/
+data/logs/
 data/missing_ciks.txt
 data/missing_companies.json
 
