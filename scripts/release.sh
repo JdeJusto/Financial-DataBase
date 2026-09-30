@@ -5,6 +5,9 @@
 #   ./scripts/release.sh patch "Fix companyfacts pagination"
 #   ./scripts/release.sh minor "Add a new price provider"
 #   ./scripts/release.sh major "Breaking schema migration"
+#   ./scripts/release.sh first "Initial public release"   # primer tag: usa la
+#                                                         # versión ya declarada
+#                                                         # (sin bump)
 #
 # Opciones:
 #   --dry-run   Hace todo (versión, changelog) pero NO commitea, etiqueta,
@@ -56,9 +59,9 @@ BUMP="${ARGS[0]:-}"
 MESSAGE="${ARGS[1]:-}"
 
 case "$BUMP" in
-  patch|minor|major) ;;
+  patch|minor|major|first) ;;
   *)
-    echo "Uso: ./scripts/release.sh <patch|minor|major> \"<mensaje>\" [--dry-run]" >&2
+    echo "Uso: ./scripts/release.sh <patch|minor|major|first> \"<mensaje>\" [--dry-run]" >&2
     exit 2
     ;;
 esac
@@ -130,19 +133,28 @@ CURRENT="$(sed -n 's/^__version__ = "\([0-9]\+\.[0-9]\+\.[0-9]\+\)"/\1/p' "$VERS
 [ -n "$CURRENT" ] || fail "No se pudo leer __version__ de $VERSION_FILE."
 PYPROJECT_VERSION="$(sed -n 's/^version = "\([0-9]\+\.[0-9]\+\.[0-9]\+\)"/\1/p' "$PYPROJECT" | head -1)"
 [ "$CURRENT" = "$PYPROJECT_VERSION" ] || fail "Versión desincronizada: ${VERSION_FILE}=${CURRENT} y ${PYPROJECT}=${PYPROJECT_VERSION}."
-IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
-case "$BUMP" in
-  patch) PATCH=$((PATCH + 1)) ;;
-  minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-  major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-esac
-NEW="${MAJOR}.${MINOR}.${PATCH}"
-git rev-parse -q --verify "refs/tags/v${NEW}" >/dev/null && fail "El tag v${NEW} ya existe."
-ok "${CURRENT} -> ${NEW} (${BUMP})"
+if [ "$BUMP" = "first" ]; then
+  # Primer release: se etiqueta la versión ya declarada, sin bump. La
+  # entrada del CHANGELOG debe existir ya (es la release notes).
+  NEW="$CURRENT"
+  git rev-parse -q --verify "refs/tags/v${NEW}" >/dev/null && fail "El tag v${NEW} ya existe: usa patch/minor/major."
+  grep -qE "^## \[${NEW}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}" "$CHANGELOG" || fail "Modo first: crea antes la entrada '## [${NEW}] - YYYY-MM-DD' en ${CHANGELOG}."
+  ok "primer release: v${NEW} tal cual (sin bump)"
+else
+  IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT"
+  case "$BUMP" in
+    patch) PATCH=$((PATCH + 1)) ;;
+    minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+    major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+  esac
+  NEW="${MAJOR}.${MINOR}.${PATCH}"
+  git rev-parse -q --verify "refs/tags/v${NEW}" >/dev/null && fail "El tag v${NEW} ya existe."
+  ok "${CURRENT} -> ${NEW} (${BUMP})"
+fi
 
 case "$BUMP" in
   patch) SECTION="Fixed" ;;
-  minor) SECTION="Added" ;;
+  minor|first) SECTION="Added" ;;
   major) SECTION="Changed" ;;
 esac
 
@@ -176,8 +188,11 @@ for README in README.md README.es.md; do
 done
 
 # --- 7. CHANGELOG ------------------------------------------------------------
-info "7/9  Añadiendo la entrada al CHANGELOG"
-"$PYTHON_BIN" - "$CHANGELOG" "$NEW" "$SECTION" "$MESSAGE" <<'PY'
+if [ "$BUMP" = "first" ]; then
+  info "7/9  CHANGELOG: se reutiliza la entrada existente de ${NEW} (modo first)"
+else
+  info "7/9  Añadiendo la entrada al CHANGELOG"
+  "$PYTHON_BIN" - "$CHANGELOG" "$NEW" "$SECTION" "$MESSAGE" <<'PY'
 import sys
 from datetime import date
 from pathlib import Path
@@ -190,10 +205,15 @@ text = text[:idx] + entry + text[idx:] if idx != -1 else text.rstrip() + "\n\n" 
 Path(changelog).write_text(text, encoding="utf-8")
 print(f"  ✓ CHANGELOG.md: {version} ({section})")
 PY
+fi
 
 if [ "$DRY_RUN" = "1" ]; then
   info "DRY-RUN: cambios preparados (sin commit, tag ni push)"
-  git --no-pager diff --stat
+  if [ "$BUMP" = "first" ]; then
+    echo "  modo first: sin cambios de ficheros; se etiquetaría $(git rev-parse --short HEAD) como v${NEW}"
+  else
+    git --no-pager diff --stat
+  fi
   echo
   echo "Revisa los cambios y descártalos con: git reset --hard HEAD"
   exit 0
@@ -201,13 +221,18 @@ fi
 
 # --- 8. Commit y tag ---------------------------------------------------------
 info "8/9  Commit y tag anotado"
-git add "$VERSION_FILE" "$PYPROJECT" "$CHANGELOG"
-for README in README.md README.es.md; do
-  [ -f "$README" ] && git add "$README"
-done
-git commit -m "chore(release): bump version to ${NEW}"
+if [ "$BUMP" = "first" ]; then
+  ok "modo first: sin commit de versión; se etiqueta $(git rev-parse --short HEAD)"
+else
+  git add "$VERSION_FILE" "$PYPROJECT" "$CHANGELOG"
+  for README in README.md README.es.md; do
+    [ -f "$README" ] && git add "$README"
+  done
+  git commit -m "chore(release): bump version to ${NEW}"
+  ok "commit $(git rev-parse --short HEAD)"
+fi
 git tag -a "v${NEW}" -m "$MESSAGE"
-ok "commit $(git rev-parse --short HEAD) y tag v${NEW}"
+ok "tag v${NEW} creado"
 
 # --- 9. Push y GitHub release ------------------------------------------------
 info "9/9  Push y release en GitHub"

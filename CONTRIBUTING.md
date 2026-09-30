@@ -85,7 +85,12 @@ SEC facts for AAPL and MSFT.
 ## Releasing
 
 Use `./scripts/release.sh <patch|minor|major> "<message>"` from a clean `main`
-branch with the tests passing. The script:
+branch with the tests passing. For the very first release use
+`./scripts/release.sh first "<message>"`: it tags the version already declared
+in `src/financial_database/__init__.py` (no bump) and reuses the existing
+`CHANGELOG.md` entry as the release notes.
+
+The script:
 
 1. Bumps the version in `src/financial_database/__init__.py` and
    `pyproject.toml` (they must stay in sync; a consistency test enforces it).
