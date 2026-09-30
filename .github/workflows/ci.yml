@@ -13,7 +13,7 @@ concurrency:
 jobs:
   unit-tests:
     name: Unit tests (no database)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +37,7 @@ jobs:
 
   database-tests:
     name: PostgreSQL integration tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:18
@@ -82,7 +82,7 @@ jobs:
 
   compile:
     name: Compile check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
