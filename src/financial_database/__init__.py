@@ -1,6 +1,6 @@
 """Financial Database - PostgreSQL-first financial data platform."""
 
-__version__ = "0.3.0"
+__version__ = "0.1.0"
 
 from financial_database.db.connection import get_connection
 from financial_database.db.repositories import (
