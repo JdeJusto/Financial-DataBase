@@ -82,6 +82,35 @@ SEC facts for AAPL and MSFT.
 3. `python -m pytest tests/unit -q` must be green.
 4. Open the PR describing what changed and why.
 
+## Releasing
+
+Use `./scripts/release.sh <patch|minor|major> "<message>"` from a clean `main`
+branch with the tests passing. The script:
+
+1. Bumps the version in `src/financial_database/__init__.py` and
+   `pyproject.toml` (they must stay in sync; a consistency test enforces it).
+2. Updates `CHANGELOG.md` (Keep a Changelog).
+3. Commits, creates the annotated tag `vX.Y.Z` and pushes.
+4. Creates the GitHub release (`gh release create`).
+
+It refuses to continue if the working tree is dirty, `main` is not in sync with
+`origin/main`, the unit tests fail or the `ruff` debt grows beyond
+`config/lint_baseline`. The integration suite needs PostgreSQL and is out of the
+release gate (CI runs it on every push). Use `--dry-run` to prepare the changes
+without committing, tagging or pushing.
+
+Versioning rules:
+
+- **patch** (`0.3.X`): bug fixes, docs, small polish.
+- **minor** (`0.X.0`): new features, new providers, new concepts, non-breaking.
+- **major** (`X.0.0`): breaking changes — e.g. schema migrations that break
+  compatibility or CLI renames. The script warns when new migrations land on a
+  `patch` release.
+
+The package version must match the top `CHANGELOG.md` entry and the
+`pyproject.toml` version; `tests/unit/test_release_consistency.py` enforces it
+in the regular suite.
+
 ## Reporting bugs
 
 Open an issue with the bug template: command, expected vs actual, and the

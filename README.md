@@ -109,6 +109,10 @@ docs/                   guides, runbooks, and historical reports
 - [Daily updates](docs/runbook_daily_update.md) · [Full SEC load](docs/runbook_full_load.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
 
+## Releasing
+
+Releases follow [Semantic Versioning](https://semver.org/). See [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for the process.
+
 ## License
 
 [MIT](LICENSE). The license applies to the project's code, not to external data or provider terms.
