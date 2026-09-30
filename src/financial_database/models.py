@@ -1,8 +1,7 @@
 """Financial database models."""
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Any, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -33,7 +32,7 @@ class ImportStats:
     raw_documents_created: int = 0
 
     # Errors encountered during import
-    errors: List[dict[str, Any]] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.errors is None:

@@ -3,7 +3,7 @@
 Handles all database operations for the data_providers table.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -15,7 +15,7 @@ class DataProviderRepository:
     def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
 
-    def get_by_name(self, name: str) -> Optional[dict[str, Any]]:
+    def get_by_name(self, name: str) -> dict[str, Any] | None:
         """Get a data provider by name."""
         with self.conn.cursor(row_factory=dict_row) as cur:
             cur.execute(

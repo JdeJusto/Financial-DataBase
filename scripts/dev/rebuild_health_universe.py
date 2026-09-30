@@ -48,9 +48,7 @@ def _values_block(tickers: list[str]) -> str:
     lines = []
     for i in range(0, len(tickers), TICKERS_PER_LINE):
         chunk = tickers[i : i + TICKERS_PER_LINE]
-        lines.append(
-            "        " + ", ".join(f"('{t}')" for t in chunk) + ","
-        )
+        lines.append("        " + ", ".join(f"('{t}')" for t in chunk) + ",")
     # Drop the trailing comma on the final row.
     return "\n".join(lines).rstrip()[:-1]
 
@@ -64,9 +62,7 @@ def main() -> None:
 
     start_marker = "WITH universe(ticker) AS (\n    VALUES\n"
     if start_marker not in script:
-        raise SystemExit(
-            f"section 4 VALUES marker not found in {HEALTH_SCRIPT}"
-        )
+        raise SystemExit(f"section 4 VALUES marker not found in {HEALTH_SCRIPT}")
     start = script.index(start_marker) + len(start_marker)
     end_marker = "\n)\n"
     end = script.index(end_marker, start)

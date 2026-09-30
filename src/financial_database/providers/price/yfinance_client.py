@@ -4,8 +4,6 @@ Uses yfinance library which provides free access to Yahoo Finance data.
 """
 
 import logging
-from datetime import date, datetime
-from typing import Dict, List, Optional
 
 import pandas as pd
 import yfinance as yf
@@ -39,9 +37,11 @@ class YFinanceClient(BaseHTTPClient):
     async def import_data(self, *args, **kwargs) -> ImportResult:
         # This client is not used for direct import via the provider interface.
         # The YFinanceImporter uses the client to fetch data and then inserts via repositories.
-        raise NotImplementedError("YFinanceClient does not support import_data via provider interface.")
+        raise NotImplementedError(
+            "YFinanceClient does not support import_data via provider interface."
+        )
 
-    def get_symbol(self, ticker: str, exchange_code: str) -> Optional[str]:
+    def get_symbol(self, ticker: str, exchange_code: str) -> str | None:
         """
         Convert ticker and exchange code to Yahoo Finance symbol.
         For US stocks, Yahoo Finance uses the ticker directly (e.g., AAPL).
@@ -50,14 +50,24 @@ class YFinanceClient(BaseHTTPClient):
         """
         # For simplicity, we'll just return the ticker for US exchanges
         # In a more complete implementation, we'd map exchange codes to appropriate suffixes
-        us_exchanges = {'NYSE', 'NASDAQ', 'AMEX', 'ARCA', 'BATS', 'NYSEAMERICAN', 'NYSEARCA'}
+        us_exchanges = {
+            "NYSE",
+            "NASDAQ",
+            "AMEX",
+            "ARCA",
+            "BATS",
+            "NYSEAMERICAN",
+            "NYSEARCA",
+        }
         if exchange_code.upper() in us_exchanges:
             return ticker.upper()
         else:
-            logger.warning(f"No Yahoo Finance symbol mapping for exchange code: {exchange_code}")
+            logger.warning(
+                f"No Yahoo Finance symbol mapping for exchange code: {exchange_code}"
+            )
             return None
 
-    async def fetch_daily_data(self, symbol: str) -> List[Dict]:
+    async def fetch_daily_data(self, symbol: str) -> list[dict]:
         """
         Fetch daily historical data for a given symbol using yfinance.
         Returns a list of dictionaries, each representing a row of data.
@@ -76,22 +86,32 @@ class YFinanceClient(BaseHTTPClient):
             data = []
             for date, row in hist.iterrows():
                 # Convert Timestamp to date string
-                date_str = date.strftime('%Y-%m-%d')
-                data.append({
-                    'date': date_str,
-                    'open': float(row['Open']) if not pd.isna(row['Open']) else None,
-                    'high': float(row['High']) if not pd.isna(row['High']) else None,
-                    'low': float(row['Low']) if not pd.isna(row['Low']) else None,
-                    'close': float(row['Close']) if not pd.isna(row['Close']) else None,
-                    'volume': int(row['Volume']) if not pd.isna(row['Volume']) else None,
-                })
+                date_str = date.strftime("%Y-%m-%d")
+                data.append(
+                    {
+                        "date": date_str,
+                        "open": float(row["Open"])
+                        if not pd.isna(row["Open"])
+                        else None,
+                        "high": float(row["High"])
+                        if not pd.isna(row["High"])
+                        else None,
+                        "low": float(row["Low"]) if not pd.isna(row["Low"]) else None,
+                        "close": float(row["Close"])
+                        if not pd.isna(row["Close"])
+                        else None,
+                        "volume": int(row["Volume"])
+                        if not pd.isna(row["Volume"])
+                        else None,
+                    }
+                )
 
             return data
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — network/provider boundary: return empty
             logger.error(f"Error fetching data for symbol {symbol}: {e}")
             return []
 
-    async def fetch_latest_data(self, symbol: str) -> Optional[Dict]:
+    async def fetch_latest_data(self, symbol: str) -> dict | None:
         """
         Fetch the latest data point for a symbol.
         We'll fetch the last 5 days and take the most recent.

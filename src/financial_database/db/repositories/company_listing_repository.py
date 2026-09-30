@@ -3,7 +3,7 @@
 Connects company + exchange + ticker with historical validity.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -76,7 +76,7 @@ class CompanyListingRepository:
             row = cur.fetchone()
             return row["is_active"] if row else False
 
-    def list_active(self, limit: Optional[int] = None) -> list[dict]:
+    def list_active(self, limit: int | None = None) -> list[dict]:
         """List all active listings (not delisted)."""
         with self.conn.cursor(row_factory=dict_row) as cur:
             query = """

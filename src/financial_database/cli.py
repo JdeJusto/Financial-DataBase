@@ -20,6 +20,7 @@ import psycopg
 
 from financial_database.db.migrations.runner import run_pending
 from financial_database.db.migrations.runner import status as migration_status
+from financial_database.providers.price.yfinance_importer import YFinanceImporter
 from financial_database.providers.sec.bulk_ingest import (
     BulkImportCheckpoint,
     SECBulkIngestAbort,
@@ -27,7 +28,6 @@ from financial_database.providers.sec.bulk_ingest import (
 )
 from financial_database.providers.sec.importer import SEC_PIPELINES, create_sec_importer
 from financial_database.providers.sec.models import normalize_cik
-from financial_database.providers.price.yfinance_importer import YFinanceImporter
 
 
 @click.group()
@@ -1146,7 +1146,6 @@ def maintenance_close_dangling_runs(
 @cli.group()
 def prices():
     """Stock price ingestion commands."""
-    pass
 
 
 @prices.command("update")

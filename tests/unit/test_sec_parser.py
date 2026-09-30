@@ -438,9 +438,7 @@ class TestSECParser:
         assert len(parsed) == 1
         assert parsed[0].fiscal_year == 2023  # Inferred from period_end
 
-    def test_parse_company_facts_fiscal_year_is_period_end_year(
-        self, parser
-    ):
+    def test_parse_company_facts_fiscal_year_is_period_end_year(self, parser):
         """fiscal_year must follow period_end.year, not SEC's unstable 'fy'
         label. The same period can be re-labeled with a different SEC 'fy' when
         a later filing restates comparatives (e.g. Jan-31 FY2026 period ingested

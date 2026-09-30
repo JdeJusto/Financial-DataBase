@@ -3,21 +3,23 @@ Yahoo Finance price importer.
 Fetches stock price data from Yahoo Finance and inserts into the prices table.
 """
 
-import asyncio
 import logging
 import os
-from typing import Dict, List, Optional
 
 import psycopg
 
+from financial_database.db.repositories.company_listing_repository import (
+    CompanyListingRepository,
+)
 from financial_database.db.repositories.company_repository import CompanyRepository
-from financial_database.db.repositories.company_listing_repository import CompanyListingRepository
-from financial_database.db.repositories.data_provider_repository import DataProviderRepository
+from financial_database.db.repositories.data_provider_repository import (
+    DataProviderRepository,
+)
 from financial_database.db.repositories.exchange_repository import ExchangeRepository
 from financial_database.db.repositories.import_run_repository import ImportRunRepository
 from financial_database.db.repositories.price_repository import PriceRepository
-from financial_database.providers.price.yfinance_client import YFinanceClient
 from financial_database.models import ImportStats
+from financial_database.providers.price.yfinance_client import YFinanceClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +31,15 @@ class YFinanceImporter:
 
     def __init__(
         self,
-        database_url: Optional[str] = None,
-        conn: Optional[psycopg.Connection] = None,
-        client: Optional[YFinanceClient] = None,
-        company_repo: Optional[CompanyRepository] = None,
-        listing_repo: Optional[CompanyListingRepository] = None,
-        provider_repo: Optional[DataProviderRepository] = None,
-        price_repo: Optional[PriceRepository] = None,
-        exchange_repo: Optional[ExchangeRepository] = None,
-        import_run_repo: Optional[ImportRunRepository] = None,
+        database_url: str | None = None,
+        conn: psycopg.Connection | None = None,
+        client: YFinanceClient | None = None,
+        company_repo: CompanyRepository | None = None,
+        listing_repo: CompanyListingRepository | None = None,
+        provider_repo: DataProviderRepository | None = None,
+        price_repo: PriceRepository | None = None,
+        exchange_repo: ExchangeRepository | None = None,
+        import_run_repo: ImportRunRepository | None = None,
     ):
         # Determine the database connection
         if conn is not None:
@@ -48,13 +50,16 @@ class YFinanceImporter:
             # Use default connection from environment
             self.conn = psycopg.connect(
                 os.environ.get(
-                    "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
+                    "DATABASE_URL",
+                    "postgresql://financial:test@localhost:5432/financial_database",
                 ),
                 row_factory=psycopg.rows.dict_row,
             )
 
         if self.conn is None:
-            raise RuntimeError("Failed to establish database connection for YFinanceImporter")
+            raise RuntimeError(
+                "Failed to establish database connection for YFinanceImporter"
+            )
 
         # Set up dependencies, injecting the connection into repositories if not provided
         self.client = client or YFinanceClient()
@@ -65,7 +70,7 @@ class YFinanceImporter:
         self.exchange_repo = exchange_repo or ExchangeRepository(self.conn)
         self.import_runs = import_run_repo or ImportRunRepository(self.conn)
 
-    async def get_or_create_provider(self) -> Dict:
+    async def get_or_create_provider(self) -> dict:
         """
         Get or create the Yahoo Finance data provider.
         Returns the provider record.
@@ -88,7 +93,7 @@ class YFinanceImporter:
 
     async def update_prices_for_listing(
         self,
-        listing: Dict,
+        listing: dict,
         provider_id: str,
         stats: ImportStats,
     ) -> None:
@@ -97,7 +102,6 @@ class YFinanceImporter:
         """
         ticker = listing["ticker"]
         exchange_id = listing["exchange_id"]
-        company_id = listing["company_id"]
 
         # Get exchange by ID to get its code
         exchange = self.exchange_repo.get(exchange_id)
@@ -109,14 +113,16 @@ class YFinanceImporter:
         exchange_code = exchange["code"]
         symbol = self.client.get_symbol(ticker, exchange_code)
         if not symbol:
-            logger.warning(f"Could not generate Yahoo Finance symbol for {ticker} on exchange {exchange_code}")
+            logger.warning(
+                f"Could not generate Yahoo Finance symbol for {ticker} on exchange {exchange_code}"
+            )
             stats.records_skipped += 1
             return
 
         # Fetch latest data
         try:
             latest_data = await self.client.fetch_latest_data(symbol)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — per-record boundary: skip and continue
             logger.error(f"Error fetching data for symbol {symbol}: {e}")
             stats.records_skipped += 1
             return
@@ -135,8 +141,9 @@ class YFinanceImporter:
         # Convert string to date object if needed
         if isinstance(price_date, str):
             # Yahoo Finance date format is YYYY-MM-DD
-            from datetime import datetime
-            price_date = datetime.strptime(price_date, "%Y-%m-%d").date()
+            from datetime import date
+
+            price_date = date.fromisoformat(price_date)
 
         price_data = {
             "listing_id": listing["id"],
@@ -146,7 +153,9 @@ class YFinanceImporter:
             "high": latest_data["high"],
             "low": latest_data["low"],
             "close": latest_data["close"],
-            "adjusted_close": latest_data["close"],  # Using close as adjusted_close for simplicity
+            "adjusted_close": latest_data[
+                "close"
+            ],  # Using close as adjusted_close for simplicity
             "volume": latest_data["volume"],
             "currency": "USD",  # Yahoo Finance primarily provides USD prices for US stocks; we assume USD for now.
             "source_id": f"yfinance:{symbol}",  # Unique identifier for the price record from Yahoo Finance
@@ -157,20 +166,24 @@ class YFinanceImporter:
             stats.records_inserted += 1
             logger.debug(f"Inserted price for {ticker} on {price_date}")
             self.conn.commit()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — duplicate detection needs the driver error text
             # Rollback the transaction to clear any error state
             self.conn.rollback()
             # Check if it's a duplicate key violation (by exception type or message)
-            if e.__class__.__name__ == 'UniqueViolation' or "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
+            if (
+                e.__class__.__name__ == "UniqueViolation"
+                or "unique constraint" in str(e).lower()
+                or "duplicate key" in str(e).lower()
+            ):
                 stats.records_skipped += 1
                 logger.debug(f"Duplicate price for {ticker} on {price_date}, skipping")
             else:
                 logger.error(f"Error inserting price for {ticker}: {e}")
                 logger.error(f"Exception class: {e.__class__.__name__}")
-                logger.error(f"Exception string: {str(e)}")
+                logger.error(f"Exception string: {e!s}")
                 stats.records_skipped += 1
 
-    async def run(self, limit: Optional[int] = None) -> ImportStats:
+    async def run(self, limit: int | None = None) -> ImportStats:
         """
         Run the price update for all listings (or up to limit).
         """

@@ -265,9 +265,7 @@ class TestGetCompanyTickers:
         company; without memoization the ~12k-company JSON is re-downloaded and
         re-parsed each time. force_refresh=True must bypass the cache.
         """
-        mock_data = {
-            "data": [["0000320193", "Apple Inc.", "AAPL", "NASDAQ"]]
-        }
+        mock_data = {"data": [["0000320193", "Apple Inc.", "AAPL", "NASDAQ"]]}
 
         with (
             patch.object(sec_client, "_ensure_session"),

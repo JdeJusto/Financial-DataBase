@@ -1,5 +1,4 @@
-# Legacy ruff debt when the release gate was introduced (2026-09-30).
-# The gate fails when either count grows; lower them as the debt is paid
-# down (the release script reminds you when it drops).
-check_errors=84
-format_files=15
+# Ruff gate baseline (2026-09-30). The legacy debt was paid down to zero;
+# the gate now expects exactly zero errors and zero unformatted files.
+check_errors=0
+format_files=0

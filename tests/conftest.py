@@ -107,7 +107,7 @@ def db_connection(test_db_url):
         Returns:
             List of dictionaries representing the query results
         """
-        with open(script_path, 'r') as f:
+        with open(script_path, "r") as f:
             script_content = f.read()
 
         # Replace parameters in the script.
@@ -119,21 +119,23 @@ def db_connection(test_db_url):
                     # For string values, we need to quote them and escape single quotes
                     escaped_value = value.replace("'", "''")
                     quoted = f"'{escaped_value}'"
-                    script_content = script_content.replace(f':{key}', quoted)
-                    script_content = script_content.replace(f'%({key})s', quoted)
+                    script_content = script_content.replace(f":{key}", quoted)
+                    script_content = script_content.replace(f"%({key})s", quoted)
                 elif isinstance(value, list):
                     # Handle array parameters (for IN clauses etc.)
                     if all(isinstance(item, str) for item in value):
-                        quoted_items = ["'{}'".format(item.replace("'", "''")) for item in value]
-                        array_str = "ARRAY[{}]".format(','.join(quoted_items))
+                        quoted_items = [
+                            "'{}'".format(item.replace("'", "''")) for item in value
+                        ]
+                        array_str = "ARRAY[{}]".format(",".join(quoted_items))
                     else:
                         array_str = f"ARRAY[{','.join(str(item) for item in value)}]"
-                    script_content = script_content.replace(f':{key}', array_str)
-                    script_content = script_content.replace(f'%({key})s', array_str)
+                    script_content = script_content.replace(f":{key}", array_str)
+                    script_content = script_content.replace(f"%({key})s", array_str)
                 else:
                     # For numeric values
-                    script_content = script_content.replace(f':{key}', str(value))
-                    script_content = script_content.replace(f'%({key})s', str(value))
+                    script_content = script_content.replace(f":{key}", str(value))
+                    script_content = script_content.replace(f"%({key})s", str(value))
 
         with conn.cursor() as cur:
             cur.execute(script_content)
@@ -143,7 +145,7 @@ def db_connection(test_db_url):
                 for row in cur.fetchall():
                     # With dict_row factory, row is already a dict-like object
                     # Convert it to a proper dict
-                    if hasattr(row, 'keys'):
+                    if hasattr(row, "keys"):
                         results.append(dict(row))
                     else:
                         results.append(dict(zip(columns, row)))

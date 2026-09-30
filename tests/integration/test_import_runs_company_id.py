@@ -61,7 +61,6 @@ class TestImportRunsCompanyId:
         self, db_connection, company, provider_id
     ):
         runs = ImportRunRepository(db_connection)
-        companies = CompanyRepository(db_connection)
         company_id = str(company["id"])
         run = runs.create(provider_id, "sec_sync", "success", company_id=company_id)
         db_connection.commit()

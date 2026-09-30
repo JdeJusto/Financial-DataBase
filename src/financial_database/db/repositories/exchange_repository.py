@@ -3,8 +3,9 @@
 Handles exchanges where companies list.
 """
 
-import psycopg
 from uuid import UUID
+
+import psycopg
 
 
 class ExchangeRepository:

@@ -3,21 +3,23 @@ Stooq price importer.
 Fetches stock price data from Stooq and inserts into the prices table.
 """
 
-import asyncio
 import logging
 import os
-from typing import Dict, List, Optional
 
 import psycopg
 
+from financial_database.db.repositories.company_listing_repository import (
+    CompanyListingRepository,
+)
 from financial_database.db.repositories.company_repository import CompanyRepository
-from financial_database.db.repositories.company_listing_repository import CompanyListingRepository
-from financial_database.db.repositories.data_provider_repository import DataProviderRepository
+from financial_database.db.repositories.data_provider_repository import (
+    DataProviderRepository,
+)
 from financial_database.db.repositories.exchange_repository import ExchangeRepository
 from financial_database.db.repositories.import_run_repository import ImportRunRepository
 from financial_database.db.repositories.price_repository import PriceRepository
-from financial_database.providers.price.client import StooqClient
 from financial_database.models import ImportStats
+from financial_database.providers.price.client import StooqClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +31,15 @@ class StooqImporter:
 
     def __init__(
         self,
-        database_url: Optional[str] = None,
-        conn: Optional[psycopg.Connection] = None,
-        client: Optional[StooqClient] = None,
-        company_repo: Optional[CompanyRepository] = None,
-        listing_repo: Optional[CompanyListingRepository] = None,
-        provider_repo: Optional[DataProviderRepository] = None,
-        price_repo: Optional[PriceRepository] = None,
-        exchange_repo: Optional[ExchangeRepository] = None,
-        import_run_repo: Optional[ImportRunRepository] = None,
+        database_url: str | None = None,
+        conn: psycopg.Connection | None = None,
+        client: StooqClient | None = None,
+        company_repo: CompanyRepository | None = None,
+        listing_repo: CompanyListingRepository | None = None,
+        provider_repo: DataProviderRepository | None = None,
+        price_repo: PriceRepository | None = None,
+        exchange_repo: ExchangeRepository | None = None,
+        import_run_repo: ImportRunRepository | None = None,
     ):
         # Determine the database connection
         if conn is not None:
@@ -48,13 +50,16 @@ class StooqImporter:
             # Use default connection from environment
             self.conn = psycopg.connect(
                 os.environ.get(
-                    "DATABASE_URL", "postgresql://financial:test@localhost:5432/financial_database"
+                    "DATABASE_URL",
+                    "postgresql://financial:test@localhost:5432/financial_database",
                 ),
                 row_factory=psycopg.rows.dict_row,
             )
 
         if self.conn is None:
-            raise RuntimeError("Failed to establish database connection for StooqImporter")
+            raise RuntimeError(
+                "Failed to establish database connection for StooqImporter"
+            )
 
         # Set up dependencies, injecting the connection into repositories if not provided
         self.client = client or StooqClient()
@@ -65,7 +70,7 @@ class StooqImporter:
         self.exchange_repo = exchange_repo or ExchangeRepository(self.conn)
         self.import_runs = import_run_repo or ImportRunRepository(self.conn)
 
-    async def get_or_create_provider(self) -> Dict:
+    async def get_or_create_provider(self) -> dict:
         """
         Get or create the Stooq data provider.
         Returns the provider record.
@@ -88,7 +93,7 @@ class StooqImporter:
 
     async def update_prices_for_listing(
         self,
-        listing: Dict,
+        listing: dict,
         provider_id: str,
         stats: ImportStats,
     ) -> None:
@@ -97,7 +102,6 @@ class StooqImporter:
         """
         ticker = listing["ticker"]
         exchange_id = listing["exchange_id"]
-        company_id = listing["company_id"]
 
         # Get exchange by ID to get its code
         exchange = self.exchange_repo.get(exchange_id)
@@ -109,14 +113,16 @@ class StooqImporter:
         exchange_code = exchange["code"]
         symbol = self.client.get_symbol(ticker, exchange_code)
         if not symbol:
-            logger.warning(f"Could not generate Stooq symbol for {ticker} on exchange {exchange_code}")
+            logger.warning(
+                f"Could not generate Stooq symbol for {ticker} on exchange {exchange_code}"
+            )
             stats.records_skipped += 1
             return
 
         # Fetch latest data
         try:
             latest_data = await self.client.fetch_latest_data(symbol)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — per-record boundary: skip and continue
             logger.error(f"Error fetching data for symbol {symbol}: {e}")
             stats.records_skipped += 1
             return
@@ -135,8 +141,9 @@ class StooqImporter:
         # Convert string to date object if needed
         if isinstance(price_date, str):
             # Stooq date format is YYYY-MM-DD
-            from datetime import datetime
-            price_date = datetime.strptime(price_date, "%Y-%m-%d").date()
+            from datetime import date
+
+            price_date = date.fromisoformat(price_date)
 
         price_data = {
             "listing_id": listing["id"],
@@ -155,16 +162,19 @@ class StooqImporter:
             await self.price_repo.create(price_data)
             stats.records_inserted += 1
             logger.debug(f"Inserted price for {ticker} on {price_date}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — duplicate detection needs the driver error text
             # Check if it's a duplicate key violation
-            if "unique constraint" in str(e).lower() or "duplicate key" in str(e).lower():
+            if (
+                "unique constraint" in str(e).lower()
+                or "duplicate key" in str(e).lower()
+            ):
                 stats.records_skipped += 1
                 logger.debug(f"Duplicate price for {ticker} on {price_date}, skipping")
             else:
                 logger.error(f"Error inserting price for {ticker}: {e}")
                 stats.records_skipped += 1
 
-    async def run(self, limit: Optional[int] = None) -> ImportStats:
+    async def run(self, limit: int | None = None) -> ImportStats:
         """
         Run the price update for all listings (or up to limit).
         """

@@ -8,16 +8,13 @@ Where <symbol> is the stock symbol in Stooq format (e.g., aapl.us for Apple)
 
 import csv
 import logging
-from datetime import datetime, date
-from typing import Dict, List, Optional
+from typing import ClassVar
 from urllib.parse import urlencode
 
-import httpx
-
 from financial_database.providers.base import BaseHTTPClient, ImportResult
-from financial_database.providers.sec.client import SECClient  # For logging pattern, but we'll create our own
 
 logger = logging.getLogger(__name__)
+
 
 class StooqClient(BaseHTTPClient):
     """
@@ -31,18 +28,18 @@ class StooqClient(BaseHTTPClient):
     # We'll map common exchange codes to their Stooq suffix.
     # For US exchanges (NYSE, NASDAQ, etc.), we use '.us'
     # For OTC markets, we use specific suffixes.
-    EXCHANGE_SUFFIX_MAP = {
-        'NYSE': 'us',
-        'NASDAQ': 'us',
-        'AMEX': 'us',
-        'ARCA': 'us',
-        'BATS': 'us',
-        'NYSEAMERICAN': 'us',
-        'NYSEARCA': 'us',
-        'OTC': 'otc',
-        'OTCQB': 'otcqb',
-        'OTCQX': 'otcqx',
-        'PINK': 'pink',
+    EXCHANGE_SUFFIX_MAP: ClassVar[dict[str, str]] = {
+        "NYSE": "us",
+        "NASDAQ": "us",
+        "AMEX": "us",
+        "ARCA": "us",
+        "BATS": "us",
+        "NYSEAMERICAN": "us",
+        "NYSEARCA": "us",
+        "OTC": "otc",
+        "OTCQB": "otcqb",
+        "OTCQX": "otcqx",
+        "PINK": "pink",
         # For non-US, we might need to map to the country code or specific suffix.
         # For now, we'll only support US exchanges and log warnings for others.
     }
@@ -50,9 +47,11 @@ class StooqClient(BaseHTTPClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Stooq does not require a special User-Agent, but we'll set one to be polite.
-        self.headers.update({
-            'User-Agent': 'financial-database/1.0 (+https://github.com/yourorg/financial-database)'
-        })
+        self.headers.update(
+            {
+                "User-Agent": "financial-database/1.0 (+https://github.com/yourorg/financial-database)"
+            }
+        )
 
     @property
     def name(self) -> str:
@@ -69,29 +68,33 @@ class StooqClient(BaseHTTPClient):
     async def import_data(self, *args, **kwargs) -> ImportResult:
         # This client is not used for direct import via the provider interface.
         # The StooqImporter uses the client to fetch data and then inserts via repositories.
-        raise NotImplementedError("StooqClient does not support import_data via provider interface.")
+        raise NotImplementedError(
+            "StooqClient does not support import_data via provider interface."
+        )
 
-    def get_symbol(self, ticker: str, exchange_code: str) -> Optional[str]:
+    def get_symbol(self, ticker: str, exchange_code: str) -> str | None:
         """
         Convert ticker and exchange code to Stooq symbol.
         Returns None if the exchange is not supported.
         """
         suffix = self.EXCHANGE_SUFFIX_MAP.get(exchange_code.upper())
         if suffix is None:
-            logger.warning(f"No Stooq suffix mapping for exchange code: {exchange_code}")
+            logger.warning(
+                f"No Stooq suffix mapping for exchange code: {exchange_code}"
+            )
             return None
         # Stooq symbol format: <ticker>.<suffix>
         # Ticker should be lowercase.
         return f"{ticker.lower()}.{suffix}"
 
-    async def fetch_daily_data(self, symbol: str) -> List[Dict]:
+    async def fetch_daily_data(self, symbol: str) -> list[dict]:
         """
         Fetch daily historical data for a given Stooq symbol.
         Returns a list of dictionaries, each representing a row of data.
         """
         params = {
-            's': symbol,
-            'i': 'd',  # daily
+            "s": symbol,
+            "i": "d",  # daily
         }
         url = f"{self.BASE_URL}?{urlencode(params)}"
         logger.debug(f"Fetching Stooq data for symbol {symbol} from {url}")
@@ -101,7 +104,7 @@ class StooqClient(BaseHTTPClient):
 
         # Stooq returns CSV data with a header.
         # We'll parse the CSV.
-        lines = response.text.strip().split('\n')
+        lines = response.text.strip().split("\n")
         if not lines:
             return []
 
@@ -111,21 +114,25 @@ class StooqClient(BaseHTTPClient):
             # Stooq column names: Date, Open, High, Low, Close, Volume
             # We'll convert to our expected format.
             try:
-                data.append({
-                    'date': row['Date'],
-                    'open': float(row['Open']) if row['Open'] else None,
-                    'high': float(row['High']) if row['High'] else None,
-                    'low': float(row['Low']) if row['Low'] else None,
-                    'close': float(row['Close']) if row['Close'] else None,
-                    'volume': int(row['Volume']) if row['Volume'] else None,
-                })
+                data.append(
+                    {
+                        "date": row["Date"],
+                        "open": float(row["Open"]) if row["Open"] else None,
+                        "high": float(row["High"]) if row["High"] else None,
+                        "low": float(row["Low"]) if row["Low"] else None,
+                        "close": float(row["Close"]) if row["Close"] else None,
+                        "volume": int(row["Volume"]) if row["Volume"] else None,
+                    }
+                )
             except (ValueError, KeyError) as e:
-                logger.warning(f"Error parsing Stooq row for symbol {symbol}: {row}. Error: {e}")
+                logger.warning(
+                    f"Error parsing Stooq row for symbol {symbol}: {row}. Error: {e}"
+                )
                 continue
 
         return data
 
-    async def fetch_latest_data(self, symbol: str) -> Optional[Dict]:
+    async def fetch_latest_data(self, symbol: str) -> dict | None:
         """
         Fetch the latest data point for a symbol.
         We'll fetch the last 5 days and take the most recent.

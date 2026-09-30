@@ -1,13 +1,13 @@
 """Unit tests for price ingestion functionality."""
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
-import psycopg
-from psycopg.rows import dict_row
+from unittest.mock import AsyncMock, Mock
 
-from financial_database.providers.price.importer import StooqImporter
-from financial_database.providers.price.client import StooqClient
+import psycopg
+import pytest
+
 from financial_database.models import ImportStats
+from financial_database.providers.price.client import StooqClient
+from financial_database.providers.price.importer import StooqImporter
 
 
 @pytest.fixture
@@ -27,14 +27,16 @@ def mock_client():
     """Create a mock Stooq client."""
     client = Mock(spec=StooqClient)
     client.get_symbol.return_value = "aapl.us"
-    client.fetch_latest_data = AsyncMock(return_value={
-        "date": "2026-09-05",
-        "open": 150.0,
-        "high": 155.0,
-        "low": 149.0,
-        "close": 153.0,
-        "volume": 1000000
-    })
+    client.fetch_latest_data = AsyncMock(
+        return_value={
+            "date": "2026-09-05",
+            "open": 150.0,
+            "high": 155.0,
+            "low": 149.0,
+            "close": 153.0,
+            "volume": 1000000,
+        }
+    )
     return client
 
 
@@ -47,7 +49,7 @@ def mock_listing_repo():
             "id": "listing-1",
             "ticker": "AAPL",
             "exchange_id": "nasdaq-id",
-            "company_id": "company-1"
+            "company_id": "company-1",
         }
     ]
     return repo
@@ -57,11 +59,9 @@ def mock_listing_repo():
 def mock_exchange_repo():
     """Create a mock exchange repository."""
     repo = Mock()
-    repo.get = Mock(return_value={
-        "id": "nasdaq-id",
-        "code": "NASDAQ",
-        "name": "NASDAQ"
-    })
+    repo.get = Mock(
+        return_value={"id": "nasdaq-id", "code": "NASDAQ", "name": "NASDAQ"}
+    )
     return repo
 
 
@@ -70,14 +70,16 @@ def mock_provider_repo():
     """Create a mock data provider repository."""
     repo = Mock()
     repo.get_by_name = Mock(return_value=None)
-    repo.create = Mock(return_value={
-        "id": "provider-stooq",
-        "name": "Stooq",
-        "type": "price",
-        "display_name": "Stooq",
-        "base_url": "https://stooq.com",
-        "is_active": True
-    })
+    repo.create = Mock(
+        return_value={
+            "id": "provider-stooq",
+            "name": "Stooq",
+            "type": "price",
+            "display_name": "Stooq",
+            "base_url": "https://stooq.com",
+            "is_active": True,
+        }
+    )
     return repo
 
 
@@ -114,7 +116,7 @@ async def test_update_prices_for_listing_success(
     mock_exchange_repo,
     mock_provider_repo,
     mock_price_repo,
-    mock_import_run_repo
+    mock_import_run_repo,
 ):
     """Test successful price update for a listing."""
     # Setup
@@ -125,7 +127,7 @@ async def test_update_prices_for_listing_success(
         exchange_repo=mock_exchange_repo,
         provider_repo=mock_provider_repo,
         price_repo=mock_price_repo,
-        import_run_repo=mock_import_run_repo
+        import_run_repo=mock_import_run_repo,
     )
 
     stats = ImportStats()
@@ -133,7 +135,7 @@ async def test_update_prices_for_listing_success(
         "id": "listing-1",
         "ticker": "AAPL",
         "exchange_id": "nasdaq-id",
-        "company_id": "company-1"
+        "company_id": "company-1",
     }
     provider_id = "provider-stooq"
 
@@ -155,7 +157,7 @@ async def test_update_prices_for_listing_no_exchange(
     mock_exchange_repo,
     mock_provider_repo,
     mock_price_repo,
-    mock_import_run_repo
+    mock_import_run_repo,
 ):
     """Test price update when exchange is not found."""
     # Setup
@@ -167,7 +169,7 @@ async def test_update_prices_for_listing_no_exchange(
         exchange_repo=mock_exchange_repo,
         provider_repo=mock_provider_repo,
         price_repo=mock_price_repo,
-        import_run_repo=mock_import_run_repo
+        import_run_repo=mock_import_run_repo,
     )
 
     stats = ImportStats()
@@ -175,7 +177,7 @@ async def test_update_prices_for_listing_no_exchange(
         "id": "listing-1",
         "ticker": "AAPL",
         "exchange_id": "unknown-id",
-        "company_id": "company-1"
+        "company_id": "company-1",
     }
     provider_id = "provider-stooq"
 
@@ -195,7 +197,7 @@ async def test_update_prices_for_listing_no_symbol(
     mock_exchange_repo,
     mock_provider_repo,
     mock_price_repo,
-    mock_import_run_repo
+    mock_import_run_repo,
 ):
     """Test price update when symbol cannot be generated."""
     # Setup
@@ -207,7 +209,7 @@ async def test_update_prices_for_listing_no_symbol(
         exchange_repo=mock_exchange_repo,
         provider_repo=mock_provider_repo,
         price_repo=mock_price_repo,
-        import_run_repo=mock_import_run_repo
+        import_run_repo=mock_import_run_repo,
     )
 
     stats = ImportStats()
@@ -215,7 +217,7 @@ async def test_update_prices_for_listing_no_symbol(
         "id": "listing-1",
         "ticker": "AAPL",
         "exchange_id": "nasdaq-id",
-        "company_id": "company-1"
+        "company_id": "company-1",
     }
     provider_id = "provider-stooq"
 
@@ -236,11 +238,12 @@ async def test_update_prices_for_listing_duplicate_key(
     mock_exchange_repo,
     mock_provider_repo,
     mock_price_repo,
-    mock_import_run_repo
+    mock_import_run_repo,
 ):
     """Test price update when duplicate key error occurs."""
     # Setup
     from psycopg.errors import UniqueViolation
+
     mock_price_repo.create.side_effect = UniqueViolation("duplicate key")
 
     importer = StooqImporter(
@@ -250,7 +253,7 @@ async def test_update_prices_for_listing_duplicate_key(
         exchange_repo=mock_exchange_repo,
         provider_repo=mock_provider_repo,
         price_repo=mock_price_repo,
-        import_run_repo=mock_import_run_repo
+        import_run_repo=mock_import_run_repo,
     )
 
     stats = ImportStats()
@@ -258,7 +261,7 @@ async def test_update_prices_for_listing_duplicate_key(
         "id": "listing-1",
         "ticker": "AAPL",
         "exchange_id": "nasdaq-id",
-        "company_id": "company-1"
+        "company_id": "company-1",
     }
     provider_id = "provider-stooq"
 
@@ -278,7 +281,7 @@ async def test_run_no_listings(
     mock_exchange_repo,
     mock_provider_repo,
     mock_price_repo,
-    mock_import_run_repo
+    mock_import_run_repo,
 ):
     """Test run method when no listings are found."""
     # Setup
@@ -290,7 +293,7 @@ async def test_run_no_listings(
         exchange_repo=mock_exchange_repo,
         provider_repo=mock_provider_repo,
         price_repo=mock_price_repo,
-        import_run_repo=mock_import_run_repo
+        import_run_repo=mock_import_run_repo,
     )
 
     # Execute
