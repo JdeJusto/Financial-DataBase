@@ -105,7 +105,10 @@ ok "tests OK (la suite de integración necesita PostgreSQL y queda fuera)"
 
 # --- 4. Ruff: la deuda no crece (ratchet) ------------------------------------
 info "4/9  Ruff: la deuda no debe crecer (baseline ${BASELINE})"
-CHECK_ERRORS="$("$RUFF_BIN" check . --output-format json | "$PYTHON_BIN" -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+# ruff check/format salen con código 1 cuando hay deuda: captura la salida
+# sin que pipefail aborte el script (el gate compara contra el baseline).
+CHECK_JSON="$("$RUFF_BIN" check . --output-format json || true)"
+CHECK_ERRORS="$(printf '%s' "$CHECK_JSON" | "$PYTHON_BIN" -c 'import json,sys; print(len(json.load(sys.stdin)))')"
 FORMAT_FILES="$("$RUFF_BIN" format --check . 2>&1 | tail -1 | grep -oE '^[0-9]+ files? would be reformatted' | grep -oE '^[0-9]+' || true)"
 FORMAT_FILES="${FORMAT_FILES:-0}"
 BASELINE_CHECK="$(sed -n 's/^check_errors=\([0-9]\+\)$/\1/p' "$BASELINE" | head -1)"
