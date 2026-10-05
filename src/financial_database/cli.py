@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 import click
 import psycopg
 
+from financial_database import __version__
 from financial_database.db.migrations.runner import run_pending
 from financial_database.db.migrations.runner import status as migration_status
 from financial_database.providers.price.yfinance_importer import YFinanceImporter
@@ -31,7 +32,7 @@ from financial_database.providers.sec.models import normalize_cik
 
 
 @click.group()
-@click.version_option(version="0.3.0")
+@click.version_option(version=__version__)
 def cli():
     """Financial Database - PostgreSQL-first financial data platform."""
 

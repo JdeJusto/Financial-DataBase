@@ -11,7 +11,10 @@ import re
 import tomllib
 from pathlib import Path
 
+from click.testing import CliRunner
+
 from financial_database import __version__
+from financial_database.cli import cli
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
@@ -100,3 +103,10 @@ def test_pyproject_version_matches_package():
         f"pyproject.toml ({declarada}) y financial_database.__version__ "
         f"({__version__}) no coinciden"
     )
+
+
+def test_cli_reports_the_package_version():
+    """El CLI no debe hardcodear la versión (se quedó en 0.3.0)."""
+    result = CliRunner().invoke(cli, ["--version"])
+    assert result.exit_code == 0
+    assert __version__ in result.output
