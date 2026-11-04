@@ -300,3 +300,14 @@ mapping is the future single source of truth.
 
 No migration has been applied. Approval is required before FDB-2
 (implementation, backfill, tests, release 0.2.0).
+
+## 12. Implementation note (v0.2.0)
+
+The shipped `core_financials` is the **wide aggregate** — one row per
+`(company_id, fiscal_year, period_end)` with the eight canonical metric
+columns — not the row-per-fact variant discussed in section 2. It has
+**333,027 rows / 48 MB** and refreshes in **19.7 s** concurrently. The
+row-per-fact layer is the non-materialized `financial_facts_normalized`
+view (18,056,658 mapped facts). The other design decisions (mapping table,
+`bank_revenue`, `balance_effective`, quality table) are implemented as
+described.

@@ -500,6 +500,15 @@ def sec_sync_all(database_url, limit, skip_universe, confirm):
         print(f"   Filings inserted: {total_stats.filings_inserted}", flush=True)
         print(f"   Facts inserted: {total_stats.facts_inserted}", flush=True)
         print(f"   Total errors: {len(total_stats.errors)}", flush=True)
+
+        print("🔄 Refreshing core_financials...", flush=True)
+        try:
+            from financial_database.db.refresh import refresh_core_financials
+
+            refresh_core_financials(conn)
+            print("   core_financials refreshed", flush=True)
+        except Exception as e:  # noqa: BLE001 - refresh must not fail the ingest
+            print(f"   ⚠️ core_financials refresh failed: {e}", flush=True)
     finally:
         conn.close()
         asyncio.run(client.close())

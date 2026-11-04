@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-04
+
+### Added
+- `concept_normalization` (116 rows): IFRS and US-GAAP raw tags mapped to
+  canonical fields, keyed by `(namespace, concept)`. The `*` namespace is a
+  concept-only wildcard so one row covers both US-GAAP and IFRS facts with
+  the same tag.
+- `financial_facts_normalized` view: raw facts joined with their normalized
+  field (18,056,658 mapped facts, no storage).
+- `core_financials` materialized view: 8 canonical fields (revenue,
+  net_income, operating_income, gross_profit, total_assets,
+  total_liabilities, stockholders_equity, cash), one row per
+  `(company_id, fiscal_year, period_end)`. **333,027 rows / 48 MB**;
+  refresh measured at **19.7 s** with `REFRESH MATERIALIZED VIEW
+  CONCURRENTLY`.
+- `balance_effective` view: `liabilities_effective = COALESCE(
+  total_liabilities, total_assets - stockholders_equity)` plus
+  `liabilities_derived`.
+- `data_quality_issues` table and `scripts/check_quality.py`: negative
+  revenue, unbalanced balance, absurd margins, zero revenue and future
+  dates. Current scan: 16 negative, 2,674 unbalanced, 16 absurd margins,
+  366 zero-revenue warnings, 0 future dates (3,072 rows).
+- `bank_revenue` canonical field: bank net-interest / interest-income tags
+  are exposed separately and are **not** included in
+  `core_financials.revenue` (non-bank comparable revenue). SAN has 57
+  `bank_revenue` facts. TD reports a generic `Revenue` tag, so it remains in
+  the non-bank bucket until a company-level bank classifier exists (FDB-3).
+- Post-ingest refresh: `sec sync-all` calls
+  `REFRESH MATERIALIZED VIEW CONCURRENTLY core_financials` once at the end
+  of the batch.
+
+### Coverage (VI universe, measured 2026-11-04)
+- 8/8 canonical fields: **724 → 857** companies.
+- Equity missing: **127 → 128** (one-ticker difference; under review).
+- Operating income missing: **556 → 555**.
+- Revenue (non-bank) missing: **262 → 243**.
+- Liabilities missing: **343 → 22** (derived liabilities included).
+- `financial_facts` unchanged: **76,186,195 rows / 65 GB**.
+
+### Notes
+- IFRS validation: 18 tickers; equity 18/18 <5 % (all 0.00 %); non-bank
+  revenue 14/14 <5 %. SAN/TD differ only by bank revenue definition
+  (`docs/ifrs_validation_2026-11-04.md`).
+- The design's 5.19M-row `core_financials` was the row-per-fact variant;
+  the shipped MV is the wide aggregate (333k rows). The row-per-fact layer
+  is `financial_facts_normalized`.
+- `financial_facts` is never altered by migration 0022.
+
+### Pending
+- **FDB-3**: company-level bank classifier for generic `Revenue` tags (TD,
+  others); define the bank-revenue comparator (net interest vs gross).
+- **VI-1**: consume `core_financials` / `balance_effective` in
+  `financial_data_repository`; VI keeps its own mapping until then.
+- Cron refresh deployment.
+
 ## [0.1.0] - 2026-09-30
 
 First public release. The package previously declared an unreleased `0.3.0`
