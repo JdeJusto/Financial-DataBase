@@ -13,11 +13,11 @@ class TestMigrationDiscovery:
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
         assert migrations_dir.exists()
 
-    def test_has_22_migrations(self):
-        """Test that we have exactly 22 migrations."""
+    def test_has_23_migrations(self):
+        """Test that we have exactly 23 migrations."""
         migrations_dir = Path(__file__).parent.parent.parent / "db" / "migrations"
         sql_files = list(migrations_dir.glob("*.sql"))
-        assert len(sql_files) == 22
+        assert len(sql_files) == 23
 
     def test_migrations_are_numbered(self):
         """Test that all migrations are properly numbered."""
@@ -57,6 +57,7 @@ class TestMigrationDiscovery:
             "0020_extend_financial_facts_columns",
             "0021_import_runs_company_id",
             "0022_normalization_v0.2",
+            "0023_equity_nci_alias",
         ]
         assert names == expected
 
@@ -78,7 +79,7 @@ class TestMigrationRunner:
         from financial_database.db.migrations.runner import get_migration_files
 
         files = get_migration_files()
-        assert len(files) == 22
+        assert len(files) == 23
         assert all(isinstance(f, tuple) and len(f) == 2 for f in files)
 
 

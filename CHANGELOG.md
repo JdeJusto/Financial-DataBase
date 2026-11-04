@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-04
+
+### Fixed
+- `StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest`
+  (us-gaap and ifrs-full) now maps to `stockholders_equity`. This tag is
+  used by 37 large caps (JNJ, CAT, T, VZ, CSX, ADM, PG, ...) that were
+  previously returning NULL equity in `core_financials`, causing their
+  effective year to be missed in VI's analytical paths.
+
+### Documentation
+- Non-controlling interest semantics: `stockholders_equity` includes NCI
+  when only the NCI tag exists. Fix scheduled for v0.3.0
+  (`stockholders_equity_parent`).
+- 3 non-recoverable tickers documented (AAMI, BRUN, SKT): reasons and
+  non-derivation rationale. AAMI still resolves an older effective year
+  (FY2023) from previously reported equity; BRUN and SKT remain data gaps.
+
+### Coverage
+- VI tickers without effective year: **108 → 71** (out of 2,528).
+- 37 of the 40 affected tickers recover equity at their latest FY.
+
+### Notes
+- No changes to `financial_facts` (76,186,195 rows unchanged).
+- `core_financials`: **333,027 → 336,196 rows** (new equity periods);
+  refresh measured at **19.8 s** concurrently.
+
 ## [0.2.0] - 2026-11-04
 
 ### Added

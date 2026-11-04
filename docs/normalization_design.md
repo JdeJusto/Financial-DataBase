@@ -311,3 +311,35 @@ row-per-fact layer is the non-materialized `financial_facts_normalized`
 view (18,056,658 mapped facts). The other design decisions (mapping table,
 `bank_revenue`, `balance_effective`, quality table) are implemented as
 described.
+
+## 13. Known limitations after v0.2.1
+
+### Non-controlling interest aggregation
+
+`core_financials.stockholders_equity` aggregates with `max(value)` per
+`(company_id, fiscal_year, period_end)`. When only the tag
+`StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest`
+exists (37 large caps: JNJ, CAT, T, VZ, CSX, ADM, PG, ...), that value
+enters as `stockholders_equity`. The value includes non-controlling
+interest. This is acceptable for most ratios but differs from strict
+"equity attributable to parent".
+
+**Fix scheduled for v0.3.0**: add a `stockholders_equity_parent` column,
+separate from the NCI-inclusive value. Consumers choose.
+
+### Non-recoverable tickers at their latest FY (3 of 40)
+
+- **AAMI**: no equity tag in the latest FY. Equity is derivable as
+  `assets - liabilities` (84M) but NOT derived: deriving in the inverse
+  direction can bring preferred stock, minority interest, or treasury into
+  equity incorrectly. Documented as a data gap. FDB still resolves an
+  older effective year (FY2023) from previously reported equity.
+- **BRUN**: no `total_assets` tag. Assets are derivable as
+  `liabilities + equity` but NOT derived (same reason).
+- **SKT**: no balance facts in FDB for FY2024/2025. Ingestion gap;
+  separate ticket for re-sync.
+
+The v0.2.1 NCI alias recovers 37 of the 40 affected tickers. AAMI, BRUN
+and SKT remain documented data gaps rather than being forced with
+inverse derivations. The alias also adds equity-only periods to
+`core_financials` (**333,027 → 336,196 rows**).
