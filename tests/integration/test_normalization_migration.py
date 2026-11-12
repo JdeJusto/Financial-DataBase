@@ -70,7 +70,31 @@ def test_core_financials_has_the_eight_canonical_fields(db_connection):
         "total_liabilities",
         "stockholders_equity",
         "cash",
+        "currency",
+        "revenue_usd",
+        "net_income_usd",
+        "operating_income_usd",
+        "gross_profit_usd",
+        "total_assets_usd",
+        "total_liabilities_usd",
+        "stockholders_equity_usd",
+        "cash_usd",
     } <= columns
+
+
+def test_currency_migration_objects(db_connection):
+    with db_connection.cursor() as cur:
+        cur.execute("SELECT to_regclass('public.fx_rates') AS t")
+        assert cur.fetchone()["t"] is not None
+        cur.execute("SELECT to_regclass('public.fx_currencies') AS t")
+        assert cur.fetchone()["t"] is not None
+        cur.execute("SELECT count(*) AS n FROM fx_currencies")
+        assert cur.fetchone()["n"] >= 60
+        cur.execute(
+            "SELECT count(*) AS n FROM information_schema.columns "
+            "WHERE table_name = 'financial_facts' AND column_name = 'currency'"
+        )
+        assert cur.fetchone()["n"] == 1
 
 
 def test_financial_facts_normalized_view_columns(db_connection):
