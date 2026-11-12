@@ -117,11 +117,10 @@ For a USD filer (AAPL/TTE/AZN/SHEL), `currency = 'USD'` and
   trade-time rate. Cross rates (GBP→USD via EUR) inherit ECB rounding.
 - **Yahoo fallback is not an official source** and can be rate-limited; the
   loader is a one-off batch and stores whatever it obtains.
-- **VI still reads the original columns.** `financial_database_repository.py`
-  maps `currency="USD"` and consumes `core_financials.revenue` etc. The FDB
-  release is additive and does not break VI, but VI will not use `*_usd` until
-  its own session switches the repository and adds the `[MIXED-CURRENCY]`
-  warning.
+- **VI 0.33.0 consumes `*_usd`.** `financial_database_repository.py` reads the
+  USD columns, keeps the filing `currency` for the `[MIXED-CURRENCY]` badge and
+  no longer reads `balance_effective`. VI 0.33 requires FDB 0.3.0+ (older
+  schemas lack the USD columns).
 - **`companies.currency` is still the default USD.** It is not used by this
   pipeline; the per-fact column is the source of truth.
 
