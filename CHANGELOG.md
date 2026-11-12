@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-12
+
+### Fixed
+- **ADR currency bug**: non-USD filings now keep their real reporting
+  currency. `financial_facts.unit` already carried EUR for SAN, GBP for BTI
+  and USD for TTE/AZN/SHEL; the normalization layer previously hardcoded
+  `currency="USD"`, so VI mixed EUR/GBP fundamentals with USD ADR prices.
+  The values are not modified; USD values are derived separately.
+- **CodeQL workflow permissions**: `ci.yml` and `release-tag.yml` now declare
+  `permissions: contents: read`, closing the four `actions/missing-workflow-
+  permissions` alerts.
+
+### Added
+- `financial_facts.currency` (per fact, backfilled from `unit` for non-USD
+  ISO currencies; 1,919,437 facts / 1,859 companies).
+- `fx_currencies` (66 fiat codes) and `fx_rates` (365,030 daily observations,
+  63 currencies) with ECB reference rates and a Yahoo fallback.
+- `core_financials.currency` and per-field USD columns:
+  `revenue_usd`, `net_income_usd`, `operating_income_usd`,
+  `gross_profit_usd`, `total_assets_usd`, `total_liabilities_usd`,
+  `stockholders_equity_usd`, `cash_usd`. Original columns are unchanged.
+- `scripts/load_fx_rates.py`: ECB EUR base + Yahoo fallback (`NIS→ILS`,
+  `STD→STN`, `VEF→VES`), source recorded per row.
+- `scripts/detect_reporting_currency.py`: distribution report and batched
+  currency backfill.
+- `docs/currency_normalization.md`: model, FX formula, refresh steps,
+  verification and limitations.
+- Migration `0024_currency_0_3_0.sql`.
+
+### Measured
+- SAN FY2024: EUR revenue/net income/total assets; USD conversion at the
+  latest ECB rate on/before 2024-12-31 (**1.0389 USD/EUR**).
+- BTI FY2024: GBP; **1.2529 USD/GBP** at 2024-12-31 (other period ends use
+  their own prior rate).
+- AAPL, TTE, AZN, SHEL: **USD**, `*_usd` identical to the original values.
+- 63 of 66 supported currencies have rates; UYI and CLF (indexed units) and
+  pre-1999 period ends remain NULL by design.
+
+### Notes
+- **VI must switch to `core_financials.*_usd`** in its own session; this
+  release is additive and does not break the current VI reader. A
+  `[MIXED-CURRENCY]` warning is tracked there.
+- USD facts keep `financial_facts.currency = NULL` (implicit USD) to avoid a
+  63.7M-row rewrite; `core_financials.currency` is populated from `unit`.
+- FX is a daily ECB reference rate, not trade-time; missing rates are never
+  replaced with 1.0.
+
 ## [0.2.1] - 2026-11-04
 
 ### Fixed
