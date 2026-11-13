@@ -16,6 +16,7 @@ This document provides detailed information about each table in the financial da
 10. [splits](#splits)
 11. [raw_documents](#raw_documents)
 12. [import_runs](#import_runs)
+13. [sp500_constituents](#sp500_constituents)
 
 ---
 
@@ -37,6 +38,8 @@ Stores basic information about legal entities (companies).
 | is_active | BOOLEAN | YES | true | Whether the company is currently active |
 | created_at | TIMESTAMPTZ | NO | now() | Record creation timestamp |
 | updated_at | TIMESTAMPTZ | NO | now() | Record last update timestamp |
+| last_synced_at | TIMESTAMPTZ | YES |  | Last SEC metadata sync |
+| delisted_at | DATE | YES |  | Date the company stopped trading, when known. FDB has no delisted price coverage; used for survivorship reporting |
 
 ### Constraints
 
@@ -244,7 +247,7 @@ Normalized storage for financial statement data (both instant and duration facts
 | fiscal_period | VARCHAR | NO |  | Fiscal period (e.g., 'FY', 'Q1', 'Q2', 'Q3', 'H1', 'H2') |
 | form | VARCHAR | YES |  | Form type (e.g., '10-K', '10-Q') |
 | source_id | VARCHAR | YES |  | Provider-specific fact identifier |
-| filing_date | DATE | NO |  | Date of associated filing |
+| filing_date | DATE | NO |  | Date the fact became public. Point-in-time key: a fact is known at `as_of` iff `filing_date <= as_of` |
 | created_at | TIMESTAMPTZ | NO | now() | Record creation timestamp |
 | updated_at | TIMESTAMPTZ | NO | now() | Record last update timestamp |
 
@@ -269,6 +272,64 @@ Normalized storage for financial statement data (both instant and duration facts
 - Composite index on (company_id, concept) for company-concept lookups
 - Index on filing_id for joining with filings
 - Index on provider_id for provider-based filtering
+- Point-in-time index on (company_id, fiscal_year, filing_date DESC, period_end)
+
+### Point-in-time reads
+
+Restatements coexist as separate rows (the unique constraint includes
+`filing_id`/`source_id`), so a PIT read must collapse versions by concept:
+
+```sql
+SELECT DISTINCT ON (concept) concept, value, filing_date
+FROM financial_facts
+WHERE company_id = $1
+  AND fiscal_year = $2
+  AND filing_date <= $as_of
+  AND period_end <= $as_of
+ORDER BY concept, filing_date DESC;
+```
+
+`DISTINCT ON` keeps the latest version known at `as_of`, so a restatement
+filed later is ignored. `period_end <= as_of` prevents a mis-dated fact from
+leaking a period that had not ended yet.
+
+---
+
+## sp500_constituents
+
+Historical S&P 500 membership as half-open intervals `[start_date, end_date)`.
+Loaded by `scripts/load_sp500_historical.py` from fja05680/sp500.
+
+### Columns
+
+| Column Name | Data Type | Nullable | Default | Description |
+|-------------|-----------|----------|---------|-------------|
+| ticker | VARCHAR | NO |  | Index ticker, normalized (`BRK.B` -> `BRK-B`) |
+| start_date | DATE | NO |  | First day in the index |
+| end_date | DATE | YES |  | First day out of the index; NULL = still a member |
+| company_id | UUID | YES |  | FK to companies(id); NULL for delisted/non-SEC constituents |
+| source | VARCHAR | NO | 'fja05680' | Data source label |
+| loaded_at | TIMESTAMPTZ | NO | now() | Load timestamp |
+
+### Constraints
+
+- Primary Key: (ticker, start_date)
+- Foreign Key: company_id references companies(id) ON DELETE SET NULL
+- Check: end_date IS NULL OR end_date > start_date
+
+### Indexes
+
+- Index on (start_date, end_date) for date-range membership queries
+- Partial index on company_id WHERE company_id IS NOT NULL
+
+### Membership query
+
+```sql
+SELECT ticker
+FROM sp500_constituents
+WHERE start_date <= $as_of
+  AND (end_date IS NULL OR end_date > $as_of);
+```
 
 ---
 

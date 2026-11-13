@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-13
+
+### Added
+- `sp500_constituents`: historical S&P 500 membership as half-open
+  intervals `[start_date, end_date)`, loaded by
+  `scripts/load_sp500_historical.py` from fja05680/sp500. 1,262 intervals
+  for 1,209 tickers (1996-01-02 -> 2026-08-18); 752 intervals resolved to a
+  `company_id`, 510 belong to delisted/non-SEC constituents.
+- `companies.delisted_at` (column + partial index) for survivorship
+  reporting.
+- Point-in-time index `idx_financial_facts_pit` on
+  `(company_id, fiscal_year, filing_date DESC, period_end)`.
+- Unit tests for the membership parser, interval queries and sanity ranges.
+
+### Changed
+- `financial_facts.filing_date` is documented as the point-in-time key. It
+  already existed, is `NOT NULL` and covers 76,250,812/76,250,812 rows
+  (2009-04-15 -> 2026-11-10), so no backfill was needed. A fact is known at
+  `as_of` iff `filing_date <= as_of`; restatements keep later dates and a
+  `DISTINCT ON (concept) ... ORDER BY filing_date DESC` read ignores future
+  versions.
+- `docs/database.md`: point-in-time read pattern and the new table.
+
+### Notes
+- Source staleness: the fja05680 snapshot was last updated 2026-08-18. Its
+  current-membership list has 496/503 tickers in common with Wikipedia
+  (98.6%), so index changes after that date are missing. Backtests ending in
+  2024 are unaffected.
+- Delisted price coverage: Yahoo no longer serves delisted symbols (verified
+  with LEHMQ, ENRNQ, WCOM, TWTR, ATVI, FRC, SIVB), so historical backtests
+  keep a documented survivorship bias.
+- This unblocks the VI research-grade backtest (v0.34.0).
+
 ## [0.3.0] - 2026-11-12
 
 ### Fixed
